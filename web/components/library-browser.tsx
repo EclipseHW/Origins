@@ -165,6 +165,7 @@ function LibraryCardTile({
             src={`/${visibleCard.artPath}`}
             alt={visibleCard.name}
             fill
+            unoptimized
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 16vw"
             className="rounded-[18px] object-cover"
             priority={card.name === "Dracula"}
@@ -238,7 +239,7 @@ function CardGridSection({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((card) => {
           const generatedCards = card.generatedCardNames
             .map((name) => cardLookup[name])

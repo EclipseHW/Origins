@@ -1771,7 +1771,7 @@ export const cards: CardDefinition[] = rawCardEntries.map((entry) => {
   return {
     name,
     slug,
-    artPath: `assets/${slug}.webp`,
+    artPath: `assets/${slug}.png`,
     rarity,
     cardType,
     filterKind: getFilterKind(rarity, cardType),

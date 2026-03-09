@@ -21,20 +21,13 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-2xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
+      <div className="flex w-full items-center justify-between gap-6 px-6 py-4">
         <div className="flex items-center gap-8">
-          <Link href="/library" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/8 bg-white/95 text-sm font-semibold text-black shadow-[0_10px_24px_rgba(255,255,255,0.08)]">
-              O
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
-                Origins
-              </p>
-              <p className="text-sm font-semibold text-white">
-                Card Platform
-              </p>
-            </div>
+          <Link
+            href="/library"
+            className="text-xl font-bold tracking-[0.08em] text-white"
+          >
+            Origins Base
           </Link>
 
           <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:flex">
