@@ -67,7 +67,7 @@ export default async function DeckbuilderPage() {
         )}
       </div>
 
-      <div className="rounded-[32px] border border-slate-200 bg-[linear-gradient(160deg,_#111827,_#1e293b)] p-6 text-white shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
+      <div className="rounded-[32px] border border-slate-200 bg-[linear-gradient(160deg,#111827,#1e293b)] p-6 text-white shadow-[0_18px_40px_rgba(15,23,42,0.14)]">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
           Featured Card
         </p>

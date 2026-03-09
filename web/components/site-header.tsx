@@ -20,15 +20,15 @@ export function SiteHeader() {
   const { isLoaded, isSignedIn } = useUser();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/35 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-2xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
         <div className="flex items-center gap-8">
           <Link href="/library" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-sm font-semibold text-slate-950">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/8 bg-white/95 text-sm font-semibold text-black shadow-[0_10px_24px_rgba(255,255,255,0.08)]">
               O
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
                 Origins
               </p>
               <p className="text-sm font-semibold text-white">
@@ -37,7 +37,7 @@ export function SiteHeader() {
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1 md:flex">
+          <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:flex">
             {tabs.map((tab) => {
               const isActive = pathname === tab.href;
 
@@ -47,8 +47,8 @@ export function SiteHeader() {
                   href={tab.href}
                   className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                     isActive
-                      ? "bg-white text-slate-950 shadow-sm"
-                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                      ? "bg-white text-black shadow-[0_8px_18px_rgba(255,255,255,0.14)]"
+                      : "text-white/68 hover:bg-white/[0.07] hover:text-white"
                   }`}
                 >
                   {tab.label}
@@ -64,12 +64,12 @@ export function SiteHeader() {
           ) : (
             <>
               <SignInButton mode="modal">
-                <button className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/40 hover:text-white">
+                <button className="rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-medium text-white/80 transition hover:border-white/28 hover:bg-[#252525] hover:text-white">
                   Login
                 </button>
               </SignInButton>
               <SignUpButton mode="modal">
-                <button className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
+                <button className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90">
                   Sign up
                 </button>
               </SignUpButton>

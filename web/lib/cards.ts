@@ -1736,15 +1736,11 @@ const rawCardEntries = [
   ]
 ] as const satisfies readonly RawCardTuple[];
 
-const summonableCardNames = rawCardEntries.reduce<string[]>((names, entry) => {
-  const [name, , rarity, cardType] = entry as RawCardTuple;
+const referenceableCardNames = rawCardEntries.map(([name]) => name);
 
-  if (rarity === "Token" || cardType === "Item") {
-    names.push(name);
-  }
-
-  return names;
-}, []);
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function extractGeneratedCardNames(
   name: string,
@@ -1757,14 +1753,15 @@ function extractGeneratedCardNames(
     return [];
   }
 
-  const normalizedSource = source.toLowerCase();
-
-  return summonableCardNames.filter((candidate) => {
+  return referenceableCardNames.filter((candidate) => {
     if (candidate === name) {
       return false;
     }
 
-    return normalizedSource.includes(candidate.toLowerCase());
+    return new RegExp(
+      `\\b(?:summon|add|create)\\b[^.!?;:]*\\b${escapeRegExp(candidate)}\\b`,
+      "i",
+    ).test(source);
   });
 }
 
