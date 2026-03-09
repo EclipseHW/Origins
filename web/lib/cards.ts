@@ -16,6 +16,7 @@ export type CardSection = (typeof CARD_SECTION_OPTIONS)[number];
 export type CardDefinition = {
   name: string;
   slug: string;
+  externalCodeId: string | null;
   artPath: string;
   rarity: CardRarity;
   cardType: CardType;
@@ -1765,12 +1766,22 @@ function extractGeneratedCardNames(
   });
 }
 
+const externalCodeIdsBySlug: Partial<Record<string, string>> = {
+  thumbelina: "C00198_MB",
+  bagheera: "C00245_MB",
+  dracula: "C00118_MC",
+  "wicked-stepmother": "C00175_MC",
+  death: "C00059_MC",
+  "mind-palace": "C00163_SB",
+};
+
 export const cards: CardDefinition[] = rawCardEntries.map((entry) => {
   const [name, slug, rarity, cardType, mana, attack, health, alignment, effect, legendaryPower] = entry;
 
   return {
     name,
     slug,
+    externalCodeId: externalCodeIdsBySlug[slug] ?? null,
     artPath: `assets/${slug}.png`,
     rarity,
     cardType,
