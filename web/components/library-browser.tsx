@@ -360,7 +360,7 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
   return (
     <section className="relative isolate space-y-8">
       <div className="space-y-4">
-        <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#1c1c1c] shadow-[0_22px_44px_rgba(0,0,0,0.32)] ring-1 ring-white/[0.05]">
+        <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#1c1c1c] shadow-[0_22px_44px_rgba(0,0,0,0.32)] ring-1 ring-white/5">
           <div className="flex items-center gap-3 px-4 py-2.5">
             <input
               type="search"
@@ -490,7 +490,7 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
                               toggleValue(current, keyword),
                             )
                           }
-                          className="w-full whitespace-nowrap !py-[8px] px-3 text-center text-[0.8rem] leading-none"
+                          className="w-full whitespace-nowrap py-[8px]! px-3 text-center text-[0.8rem] leading-none"
                         />
                       ))}
                     </div>

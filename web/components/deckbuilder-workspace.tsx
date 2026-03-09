@@ -1,8 +1,10 @@
-"use client";
+﻿"use client";
 
+import { SignInButton, useUser } from "@clerk/nextjs";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { makeFunctionReference } from "convex/server";
 import Image from "next/image";
-import { SignInButton } from "@clerk/nextjs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Slider } from "@/components/ui/slider";
 import type { CardDefinition } from "@/lib/cards";
 import {
@@ -12,18 +14,49 @@ import {
 } from "@/lib/library-types";
 
 const BUILDER_KIND_OPTIONS = ["Unit", "Spell"] as const;
-const DRAFT_STORAGE_KEY = "origins.deckbuilder.draft";
+const EMPTY_CARD_SLUGS: string[] = [];
 
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
-type Visibility = "private" | "public";
 type SavedState = "idle" | "saved";
 
 type DeckDraft = {
+  deckName: string;
   legendarySlug: string | null;
   cardSlugs: string[];
-  notes: string;
-  visibility: Visibility;
 };
+
+type DeckRecord = DeckDraft & {
+  _id: string;
+  userId?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const listMyDecksReference = makeFunctionReference<
+  "query",
+  Record<string, never>,
+  DeckRecord[]
+>("decks:listMine");
+const createDeckReference = makeFunctionReference<
+  "mutation",
+  { deckName: string },
+  string
+>("decks:create");
+const updateDeckReference = makeFunctionReference<
+  "mutation",
+  {
+    deckId: string;
+    deckName: string;
+    legendarySlug: string | null;
+    cardSlugs: string[];
+  },
+  void
+>("decks:update");
+const deleteDeckReference = makeFunctionReference<
+  "mutation",
+  { deckId: string },
+  void
+>("decks:remove");
 
 function toggleValue<T extends string>(items: T[], value: T): T[] {
   return items.includes(value)
@@ -41,14 +74,88 @@ function sortCardsByMana(cards: CardDefinition[]): CardDefinition[] {
   });
 }
 
+function formatDeckName(name: string): string {
+  return name.trim() || "Untitled Deck";
+}
+
+function createDeckId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `deck-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createEmptyDeck(name = ""): DeckRecord {
+  const timestamp = Date.now();
+
+  return {
+    _id: createDeckId(),
+    deckName: name,
+    legendarySlug: null,
+    cardSlugs: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function sanitizeDeckDraft(
+  parsed: Partial<DeckDraft>,
+  cardBySlug: Record<string, CardDefinition>,
+): DeckDraft {
+  const legendarySlug =
+    typeof parsed.legendarySlug === "string" &&
+    cardBySlug[parsed.legendarySlug]?.rarity === "Legendary"
+      ? parsed.legendarySlug
+      : null;
+  const cardSlugs = Array.isArray(parsed.cardSlugs)
+    ? parsed.cardSlugs
+        .filter((slug): slug is string => typeof slug === "string")
+        .filter(
+          (slug) =>
+            Boolean(cardBySlug[slug]) && cardBySlug[slug].rarity !== "Legendary",
+        )
+        .slice(0, 12)
+    : [];
+
+  return {
+    deckName: typeof parsed.deckName === "string" ? parsed.deckName : "",
+    legendarySlug,
+    cardSlugs,
+  };
+}
+
+function getOpeningHandSize(legendaryCard: CardDefinition | null): number {
+  const source = [legendaryCard?.effect, legendaryCard?.legendaryPower]
+    .filter(Boolean)
+    .join(" ");
+  const match = source.match(/you start with (\d+) less cards?/i);
+  const penalty = Number(match?.[1] ?? 0);
+
+  return Math.max(0, 6 - penalty);
+}
+
+function drawRandomHand(deck: string[], handSize: number): string[] {
+  const pool = [...deck];
+
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [pool[index], pool[randomIndex]] = [pool[randomIndex], pool[index]];
+  }
+
+  return pool.slice(0, Math.min(handSize, pool.length));
+}
+
 function FilterChip({
   active,
   label,
   onClick,
+  className,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
@@ -58,80 +165,86 @@ function FilterChip({
         active
           ? "border-white/75 bg-white text-black shadow-[0_8px_18px_rgba(255,255,255,0.12)]"
           : "border-white/10 bg-[#202020] text-white/80 hover:border-white/22 hover:bg-[#252525]"
-      }`}
+      } ${className ?? ""}`}
     >
       {label}
     </button>
   );
 }
 
-function DeckSlot({
+function ActionIcon({
+  label,
+  onClick,
+  disabled = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
+    >
+      {children}
+    </button>
+  );
+}
+
+function DeckFrame({
   card,
-  countLabel,
-  placeholder,
   onRemove,
-  tall = false,
+  highlight = false,
+  compact = false,
 }: {
   card: CardDefinition | null;
-  countLabel: string;
-  placeholder: string;
   onRemove: () => void;
-  tall?: boolean;
+  highlight?: boolean;
+  compact?: boolean;
 }) {
   return (
     <div
-      className={`rounded-[24px] border border-white/10 bg-[#1c1c1c] p-3 shadow-[0_18px_34px_rgba(0,0,0,0.24)] ${
-        tall ? "space-y-4" : "space-y-3"
+      className={`group relative overflow-hidden border bg-[#1c1c1c] shadow-[0_18px_34px_rgba(0,0,0,0.24)] ${
+        compact ? "rounded-none" : "rounded-[22px]"
+      } ${
+        highlight
+          ? "border-[#e0c15a]/70 ring-1 ring-[#e0c15a]/20"
+          : "border-white/10"
       }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/42">
-          {countLabel}
-        </p>
-        {card ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="rounded-full border border-white/10 bg-[#232323] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/72 transition hover:border-white/26 hover:text-white"
-          >
-            Remove
-          </button>
-        ) : null}
-      </div>
-
       {card ? (
-        <div className="space-y-3">
-          <div
-            className={`relative overflow-hidden rounded-[18px] shadow-[0_18px_30px_rgba(0,0,0,0.34)] ${
-              tall ? "aspect-[275/400]" : "aspect-[275/400]"
-            }`}
-          >
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${card.name}`}
+          className="block w-full text-left"
+        >
+          <div className="relative aspect-275/400 overflow-hidden">
             <Image
               src={`/${card.artPath}`}
               alt={card.name}
               fill
-              sizes={tall ? "(max-width: 1280px) 100vw, 24vw" : "(max-width: 1280px) 33vw, 12vw"}
+              sizes={compact ? "(max-width: 1280px) 24vw, 96px" : "(max-width: 1280px) 40vw, 144px"}
               className="object-cover"
             />
-            <div className="absolute right-2 top-2 rounded-full border border-white/12 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white">
-              {countLabel}
-            </div>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-white">{card.name}</p>
-            <p className="text-xs text-white/45">
-              Mana {card.mana} • {card.cardType}
-            </p>
-          </div>
-        </div>
+        </button>
       ) : (
         <div
-          className={`flex items-center justify-center rounded-[18px] border border-dashed border-white/12 bg-[#202020] text-center text-sm text-white/34 ${
-            tall ? "aspect-[275/400] px-6" : "aspect-[275/400] px-3"
+          className={`aspect-275/400 border border-dashed ${
+            compact ? "rounded-none" : "rounded-[21px]"
+          } ${
+            highlight
+              ? "border-[#e0c15a]/45 bg-[radial-gradient(circle_at_top,rgba(224,193,90,0.16),rgba(0,0,0,0)_62%)]"
+              : "border-white/12 bg-[#202020]"
           }`}
-        >
-          {placeholder}
-        </div>
+        />
       )}
     </div>
   );
@@ -139,13 +252,11 @@ function DeckSlot({
 
 function BuilderLibraryCard({
   card,
-  selected,
   disabled,
   overlayLabel,
   onAdd,
 }: {
   card: CardDefinition;
-  selected: boolean;
   disabled: boolean;
   overlayLabel: string | null;
   onAdd: () => void;
@@ -155,10 +266,10 @@ function BuilderLibraryCard({
       type="button"
       onClick={onAdd}
       disabled={disabled}
-      className="group space-y-2 text-left"
+      className="group text-left"
     >
       <div
-        className={`relative aspect-[275/400] overflow-hidden rounded-[18px] shadow-[0_18px_34px_rgba(0,0,0,0.3)] transition ${
+        className={`relative aspect-275/400 overflow-hidden rounded-[18px] shadow-[0_18px_34px_rgba(0,0,0,0.3)] transition ${
           disabled ? "grayscale opacity-45" : "group-hover:-translate-y-0.5 group-hover:shadow-[0_22px_40px_rgba(0,0,0,0.36)]"
         }`}
       >
@@ -177,25 +288,179 @@ function BuilderLibraryCard({
           </div>
         ) : null}
       </div>
-      <div className="space-y-0.5">
-        <p className={`truncate text-sm font-semibold ${selected ? "text-white/64" : "text-white"}`}>
-          {card.name}
-        </p>
-        <p className="text-xs text-white/40">
-          Mana {card.mana} • {card.rarity}
-        </p>
-      </div>
     </button>
+  );
+}
+
+function DeckListCard({
+  deck,
+  selected,
+  cardBySlug,
+  editing,
+  renameValue,
+  onSelect,
+  onRenameChange,
+  onRenameStart,
+  onRenameSave,
+  onRenameCancel,
+  onDelete,
+}: {
+  deck: DeckRecord;
+  selected: boolean;
+  cardBySlug: Record<string, CardDefinition>;
+  editing: boolean;
+  renameValue: string;
+  onSelect: () => void;
+  onRenameChange: (value: string) => void;
+  onRenameStart: () => void;
+  onRenameSave: () => void;
+  onRenameCancel: () => void;
+  onDelete: () => void;
+}) {
+  const previewCard =
+    (deck.legendarySlug ? cardBySlug[deck.legendarySlug] : null) ??
+    cardBySlug[deck.cardSlugs[0] ?? ""] ??
+    null;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`group relative w-full max-w-[420px] overflow-hidden rounded-[24px] border text-left shadow-[0_18px_34px_rgba(0,0,0,0.18)] transition ${
+        selected
+          ? "border-[#e0c15a] bg-white ring-2 ring-[#e0c15a]/25"
+          : "border-black/8 bg-white hover:-translate-y-0.5 hover:shadow-[0_22px_38px_rgba(0,0,0,0.2)]"
+      }`}
+      aria-label={`Open ${formatDeckName(deck.deckName)}`}
+    >
+      {previewCard ? (
+        <>
+          <div className="absolute inset-y-0 left-0 w-32 overflow-hidden">
+            <Image
+              src={`/${previewCard.artPath}`}
+              alt={previewCard.name}
+              fill
+              sizes="128px"
+              className="object-cover"
+            />
+          </div>
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0.88)_24%,rgba(255,255,255,0.96)_54%,rgba(255,255,255,1)_100%)]" />
+        </>
+      ) : null}
+
+      <div className="relative flex min-h-[104px] items-center justify-between gap-4 px-4 py-4 pl-28 text-black">
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-black/45">
+            {deck.legendarySlug ? "Legendary deck" : "Draft deck"}
+          </p>
+          {editing ? (
+            <input
+              type="text"
+              value={renameValue}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => onRenameChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  onRenameSave();
+                }
+
+                if (event.key === "Escape") {
+                  onRenameCancel();
+                }
+              }}
+              placeholder="Deck name"
+              autoFocus
+              className="mt-2 w-full rounded-full border border-black/12 bg-black/[0.04] px-3 py-2 text-sm font-semibold text-black outline-none placeholder:text-black/30 focus:border-black/20"
+            />
+          ) : (
+            <p className="truncate pt-1 text-base font-semibold text-black">
+              {formatDeckName(deck.deckName)}
+            </p>
+          )}
+          <p className="pt-1 text-sm text-black/58">
+            {previewCard ? previewCard.name : "Pick a legendary card"} ·{" "}
+            {deck.cardSlugs.length}/12 cards
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {editing ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRenameSave();
+              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
+              aria-label={`Save ${formatDeckName(deck.deckName)}`}
+              title="Save deck name"
+            >
+              <Image src="/icons/check.svg" alt="" width={18} height={18} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRenameStart();
+              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
+              aria-label={`Edit ${formatDeckName(deck.deckName)}`}
+              title="Edit deck name"
+            >
+              <Image src="/icons/edit.svg" alt="" width={18} height={18} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-red-50 transition hover:bg-red-100"
+            aria-label={`Delete ${formatDeckName(deck.deckName)}`}
+            title="Delete deck"
+          >
+            <Image src="/icons/x.svg" alt="" width={18} height={18} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export function DeckbuilderWorkspace({
   cards,
-  isSignedIn,
 }: {
   cards: CardDefinition[];
-  isSignedIn: boolean;
 }) {
+  const { isLoaded, isSignedIn } = useUser();
+  const { isLoading: convexAuthLoading, isAuthenticated: convexAuthenticated } =
+    useConvexAuth();
+  const hasClerkSession = isLoaded && isSignedIn;
+  const canUseCloudDecks = hasClerkSession && convexAuthenticated;
+  const cloudDecksPending = hasClerkSession && convexAuthLoading;
+  const cloudDecksUnavailable =
+    hasClerkSession && !convexAuthLoading && !convexAuthenticated;
+  const signedInDecks = useQuery(
+    listMyDecksReference,
+    canUseCloudDecks ? {} : "skip",
+  );
+  const createDeckMutation = useMutation(createDeckReference);
+  const updateDeckMutation = useMutation(updateDeckReference);
+  const deleteDeckMutation = useMutation(deleteDeckReference);
+  const cardBySlug = useMemo(
+    () => Object.fromEntries(cards.map((card) => [card.slug, card])),
+    [cards],
+  );
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeKinds, setActiveKinds] = useState<BuilderKind[]>([
@@ -209,46 +474,13 @@ export function DeckbuilderWorkspace({
   ]);
   const [activeKeywords, setActiveKeywords] = useState<string[]>([]);
   const [manaRange, setManaRange] = useState<[number, number]>([0, 10]);
-  const [legendarySlug, setLegendarySlug] = useState<string | null>(null);
-  const [cardSlugs, setCardSlugs] = useState<string[]>([]);
-  const [notes, setNotes] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>("private");
+  const [guestDecks, setGuestDecks] = useState<DeckRecord[]>([createEmptyDeck()]);
+  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
+  const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [savedState, setSavedState] = useState<SavedState>("idle");
-
-  const cardBySlug = useMemo(
-    () => Object.fromEntries(cards.map((card) => [card.slug, card])),
-    [cards],
-  );
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (!stored) {
-        return;
-      }
-
-      const parsed = JSON.parse(stored) as Partial<DeckDraft>;
-      const nextLegendary =
-        typeof parsed.legendarySlug === "string" &&
-        cardBySlug[parsed.legendarySlug]?.rarity === "Legendary"
-          ? parsed.legendarySlug
-          : null;
-      const nextCards = Array.isArray(parsed.cardSlugs)
-        ? parsed.cardSlugs
-            .filter((slug): slug is string => typeof slug === "string")
-            .filter((slug) => Boolean(cardBySlug[slug]) && cardBySlug[slug].rarity !== "Legendary")
-            .slice(0, 12)
-        : [];
-
-      setLegendarySlug(nextLegendary);
-      setCardSlugs(nextCards);
-      setNotes(typeof parsed.notes === "string" ? parsed.notes : "");
-      setVisibility(parsed.visibility === "public" ? "public" : "private");
-      setSavedState("saved");
-    } catch {
-      // Ignore bad local drafts and start from a clean builder state.
-    }
-  }, [cardBySlug]);
+  const [mulliganHand, setMulliganHand] = useState<string[]>([]);
+  const [mulliganOpen, setMulliganOpen] = useState(false);
 
   useEffect(() => {
     if (savedState !== "saved") {
@@ -259,10 +491,62 @@ export function DeckbuilderWorkspace({
     return () => window.clearTimeout(timeout);
   }, [savedState]);
 
+  const savedDecks = useMemo(() => {
+    if (!isSignedIn) {
+      return guestDecks;
+    }
+
+    if (!canUseCloudDecks) {
+      return [];
+    }
+
+    return signedInDecks ?? [];
+  }, [canUseCloudDecks, guestDecks, isSignedIn, signedInDecks]);
+  const sortedDecks = useMemo(
+    () => [...savedDecks].sort((left, right) => right.updatedAt - left.updatedAt),
+    [savedDecks],
+  );
+  const effectiveSelectedDeckId =
+    selectedDeckId && sortedDecks.some((deck) => deck._id === selectedDeckId)
+      ? selectedDeckId
+      : sortedDecks[0]?._id ?? null;
+  const selectedDeck = useMemo(() => {
+    if (sortedDecks.length === 0) {
+      return null;
+    }
+
+    return (
+      sortedDecks.find((deck) => deck._id === effectiveSelectedDeckId) ??
+      sortedDecks[0] ??
+      null
+    );
+  }, [effectiveSelectedDeckId, sortedDecks]);
+  const deckName = selectedDeck?.deckName ?? "";
+  const legendarySlug = selectedDeck?.legendarySlug ?? null;
+  const cardSlugs = selectedDeck?.cardSlugs ?? EMPTY_CARD_SLUGS;
   const legendaryCard = legendarySlug ? cardBySlug[legendarySlug] ?? null : null;
   const deckCards = cardSlugs.map((slug) => cardBySlug[slug]).filter(Boolean);
-  const coreCopies = cardSlugs.length * 2;
-  const totalDeckSize = coreCopies + (legendaryCard ? 1 : 0);
+  const openingHandSize = getOpeningHandSize(legendaryCard);
+  const fullDeck = useMemo(() => {
+    const nextDeck: string[] = [];
+
+    if (legendarySlug && cardBySlug[legendarySlug]) {
+      nextDeck.push(legendarySlug);
+    }
+
+    cardSlugs.forEach((slug) => {
+      if (!cardBySlug[slug]) {
+        return;
+      }
+
+      nextDeck.push(slug, slug);
+    });
+
+    return nextDeck;
+  }, [cardBySlug, cardSlugs, legendarySlug]);
+  const mulliganCards = mulliganHand
+    .map((slug) => cardBySlug[slug])
+    .filter((card): card is CardDefinition => Boolean(card));
 
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -325,350 +609,664 @@ export function DeckbuilderWorkspace({
     setQuery("");
   }
 
-  function handleAddCard(card: CardDefinition) {
-    if (card.rarity === "Legendary") {
-      setLegendarySlug(card.slug);
+  function updateGuestDeck(
+    deckId: string,
+    updater: (deck: DeckRecord) => DeckRecord,
+  ) {
+    setGuestDecks((current) =>
+      current.map((deck) =>
+        deck._id === deckId ? { ...updater(deck), updatedAt: Date.now() } : deck,
+      ),
+    );
+  }
+
+  async function persistDeck(
+    deckId: string,
+    updater: (deck: DeckRecord) => DeckRecord,
+  ) {
+    const deck = savedDecks.find((candidate) => candidate._id === deckId);
+    if (!deck) {
       return;
     }
 
-    setCardSlugs((current) => {
-      if (current.includes(card.slug) || current.length >= 12) {
-        return current;
+    const nextDeck = updater(deck);
+    if (canUseCloudDecks) {
+      await updateDeckMutation({
+        deckId,
+        deckName: nextDeck.deckName,
+        legendarySlug: nextDeck.legendarySlug,
+        cardSlugs: nextDeck.cardSlugs,
+      });
+      setSavedState("saved");
+      return;
+    }
+
+    if (!hasClerkSession) {
+      updateGuestDeck(deckId, updater);
+    }
+  }
+
+  async function updateSelectedDeck(updater: (deck: DeckRecord) => DeckRecord) {
+    if (!selectedDeck) {
+      return;
+    }
+
+    await persistDeck(selectedDeck._id, updater);
+  }
+
+  async function handleCreateDeck() {
+    if (canUseCloudDecks) {
+      const nextDeckId = await createDeckMutation({ deckName: "" });
+      setSelectedDeckId(nextDeckId);
+      setEditingDeckId(nextDeckId);
+      setRenameValue("");
+      setSavedState("saved");
+      setMulliganHand([]);
+      setMulliganOpen(false);
+      return;
+    }
+
+    if (hasClerkSession) {
+      return;
+    }
+
+    const nextDeck = createEmptyDeck();
+
+    setGuestDecks((current) => [nextDeck, ...current]);
+    setSelectedDeckId(nextDeck._id);
+    setEditingDeckId(nextDeck._id);
+    setRenameValue(nextDeck.deckName);
+    setSavedState("idle");
+    setMulliganHand([]);
+    setMulliganOpen(false);
+  }
+
+  function handleRenameStart(deck: DeckRecord) {
+    setSelectedDeckId(deck._id);
+    setEditingDeckId(deck._id);
+    setRenameValue(deck.deckName);
+  }
+
+  async function handleRenameSave(deckId: string) {
+    await persistDeck(deckId, (deck) => ({
+      ...deck,
+      deckName: renameValue.trim(),
+    }));
+    setEditingDeckId(null);
+  }
+
+  async function handleDeleteSavedDeck(deckId: string) {
+    const deckToDelete = savedDecks.find((deck) => deck._id === deckId);
+    if (!deckToDelete) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${formatDeckName(deckToDelete.deckName)}?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const remainingDecks = savedDecks.filter((deck) => deck._id !== deckId);
+    if (canUseCloudDecks) {
+      await deleteDeckMutation({ deckId });
+    } else if (!hasClerkSession) {
+      if (remainingDecks.length === 0) {
+        setGuestDecks([createEmptyDeck()]);
+      } else {
+        setGuestDecks(remainingDecks);
+      }
+    }
+
+    if (selectedDeckId === deckId) {
+      const nextSelectedDeck = remainingDecks[0] ?? null;
+      setSelectedDeckId(nextSelectedDeck?._id ?? null);
+    }
+
+    setEditingDeckId((current) => (current === deckId ? null : current));
+    setSavedState(canUseCloudDecks ? "saved" : "idle");
+    setMulliganHand([]);
+    setMulliganOpen(false);
+  }
+
+  async function handleAddCard(card: CardDefinition) {
+    if (!selectedDeck) {
+      return;
+    }
+
+    if (card.rarity === "Legendary") {
+      await updateSelectedDeck((deck) => ({
+        ...deck,
+        legendarySlug: card.slug,
+      }));
+      return;
+    }
+
+    await updateSelectedDeck((deck) => {
+      if (deck.cardSlugs.includes(card.slug) || deck.cardSlugs.length >= 12) {
+        return deck;
       }
 
-      return [...current, card.slug];
+      return {
+        ...deck,
+        cardSlugs: [...deck.cardSlugs, card.slug],
+      };
     });
   }
 
-  function handleSaveDraft() {
+  async function handleSaveDraft() {
+    if (!selectedDeck) {
+      return;
+    }
+
+    await persistDeck(selectedDeck._id, (deck) => deck);
+    if (!isSignedIn) {
+      setSavedState("idle");
+    }
+  }
+
+  function handleRandomMulligan() {
+    if (fullDeck.length === 0) {
+      return;
+    }
+
+    setMulliganHand(drawRandomHand(fullDeck, openingHandSize));
+    setMulliganOpen(true);
+  }
+
+  async function handleExportDeck() {
     const draft: DeckDraft = {
+      deckName,
       legendarySlug,
       cardSlugs,
-      notes,
-      visibility,
     };
 
-    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-    setSavedState("saved");
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(draft));
+    } catch {
+      window.prompt("Copy deck export", JSON.stringify(draft));
+    }
+  }
+
+  async function handleImportDeck() {
+    const rawValue = window.prompt("Paste deck export");
+    if (!rawValue) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawValue) as Partial<DeckDraft>;
+      const nextDraft = sanitizeDeckDraft(parsed, cardBySlug);
+
+      await updateSelectedDeck((deck) => ({
+        ...deck,
+        deckName: nextDraft.deckName,
+        legendarySlug: nextDraft.legendarySlug,
+        cardSlugs: nextDraft.cardSlugs,
+      }));
+      setMulliganOpen(false);
+    } catch {
+      window.alert("Invalid deck import.");
+    }
   }
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-      <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
-        <div className="rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/45">
-              Deckbuilder
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
-              Build the list.
-            </h1>
-            <p className="text-sm leading-6 text-white/65">
-              1 legendary plus 12 unique cards. Each non-legendary slot counts
-              as 2 copies, so the completed deck lands at 25 cards.
-            </p>
-          </div>
-
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            <div className="rounded-2xl border border-white/10 bg-[#202020] px-3 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">
-                Legendary
-              </p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                {legendaryCard ? "1" : "0"}/1
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-[#202020] px-3 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">
-                Core
-              </p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                {cardSlugs.length}/12
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-[#202020] px-3 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">
-                Deck Size
-              </p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                {totalDeckSize}/25
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <DeckSlot
-          card={legendaryCard}
-          countLabel="x1"
-          placeholder="Select a legendary card."
-          onRemove={() => setLegendarySlug(null)}
-          tall
-        />
-
-        <div className="rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                Core Deck
-              </p>
-              <p className="mt-1 text-sm text-white/62">
-                12 unique picks, 2 copies each.
-              </p>
-            </div>
-            <span className="rounded-full border border-white/10 bg-[#202020] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/72">
-              {cardSlugs.length}/12
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            {Array.from({ length: 12 }, (_, index) => {
-              const card = deckCards[index] ?? null;
-
-              return (
-                <DeckSlot
-                  key={index}
-                  card={card}
-                  countLabel="x2"
-                  placeholder={`Slot ${index + 1}`}
-                  onRemove={() =>
-                    setCardSlugs((current) => current.filter((_, currentIndex) => currentIndex !== index))
-                  }
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                Visibility
-              </p>
-              <div className="inline-flex rounded-full border border-white/10 bg-[#202020] p-1">
-                {(["private", "public"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setVisibility(option)}
-                    className={`rounded-full px-4 py-2 text-sm font-semibold capitalize transition ${
-                      visibility === option
-                        ? "bg-white text-black shadow-[0_8px_18px_rgba(255,255,255,0.12)]"
-                        : "text-white/72 hover:text-white"
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
+    <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
+      <aside className="flex flex-col gap-4 xl:self-stretch">
+        {canUseCloudDecks ? (
+          <div className="space-y-3 rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+                  My Decks
+                </p>
+                <p className="pt-1 text-sm text-white/62">
+                  Select a deck to edit cards and legendary.
+                </p>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="deck-notes"
-                className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42"
+              <button
+                type="button"
+                onClick={handleCreateDeck}
+                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90"
               >
-                Notes
-              </label>
-              <textarea
-                id="deck-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Why this legendary, matchup notes, mulligan ideas..."
-                className="min-h-28 w-full rounded-[22px] border border-white/10 bg-[#202020] px-4 py-3 text-sm text-white outline-none placeholder:text-white/32 focus:border-white/24"
-              />
+                Create New
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-3 xl:max-h-[332px] xl:overflow-y-auto xl:pr-1">
+              {sortedDecks.map((deck) => (
+                <DeckListCard
+                  key={deck._id}
+                  deck={deck}
+                  selected={deck._id === selectedDeck?._id}
+                  cardBySlug={cardBySlug}
+                  editing={editingDeckId === deck._id}
+                  renameValue={editingDeckId === deck._id ? renameValue : deck.deckName}
+                  onSelect={() => {
+                    setSelectedDeckId(deck._id);
+                    setEditingDeckId(null);
+                    setMulliganOpen(false);
+                  }}
+                  onRenameChange={setRenameValue}
+                  onRenameStart={() => handleRenameStart(deck)}
+                  onRenameSave={() => void handleRenameSave(deck._id)}
+                  onRenameCancel={() => {
+                    setEditingDeckId(null);
+                    setRenameValue(deck.deckName);
+                  }}
+                  onDelete={() => void handleDeleteSavedDeck(deck._id)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : cloudDecksPending ? (
+          <div className="rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+              My Decks
+            </p>
+            <p className="pt-2 text-sm text-white/62">
+              Connecting your account to deck storage...
+            </p>
+          </div>
+        ) : cloudDecksUnavailable ? (
+          <div className="rounded-[28px] border border-amber-400/20 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
+              My Decks
+            </p>
+            <p className="pt-2 text-sm text-white/72">
+              You are signed in, but Convex deck storage is not authenticated yet.
+            </p>
+            <p className="pt-1 text-xs text-white/48">
+              Check the Clerk JWT template named `convex`.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex items-start gap-4">
+          <div className="w-full max-w-[160px] shrink-0">
+            <DeckFrame
+              card={legendaryCard}
+              onRemove={() =>
+                void updateSelectedDeck((deck) => ({
+                  ...deck,
+                  legendarySlug: null,
+                }))
+              }
+              highlight
+            />
+          </div>
+
+          {canUseCloudDecks ? (
+            <div className="mt-2 flex-1 rounded-[24px] border border-white/10 bg-[#1c1c1c] px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+                Editing Deck
+              </p>
+              <p className="pt-2 text-xl font-semibold text-white">
+                {formatDeckName(deckName)}
+              </p>
+              <p className="pt-1 text-sm text-white/62">
+                {legendaryCard ? legendaryCard.name : "Choose a legendary card"} ·{" "}
+                {cardSlugs.length}/12 cards
+              </p>
+            </div>
+          ) : cloudDecksPending ? (
+            <div className="mt-2 flex-1 rounded-[24px] border border-white/10 bg-[#1c1c1c] px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+                Editing Deck
+              </p>
+              <p className="pt-2 text-sm text-white/62">
+                Waiting for Convex auth before loading your saved decks.
+              </p>
+            </div>
+          ) : cloudDecksUnavailable ? (
+            <div className="mt-2 flex-1 rounded-[24px] border border-amber-400/20 bg-[#1c1c1c] px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
+                Editing Deck
+              </p>
+              <p className="pt-2 text-sm text-white/72">
+                Clerk login is active, but saved deck storage is unavailable.
+              </p>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={deckName}
+              onChange={(event) =>
+                void updateSelectedDeck((deck) => ({
+                  ...deck,
+                  deckName: event.target.value,
+                }))
+              }
+              placeholder="Deck name"
+              className="mt-2 w-full rounded-[18px] border border-white/10 bg-[#202020] px-4 py-3 text-sm text-white outline-none placeholder:text-white/32 focus:border-white/24"
+            />
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <ActionIcon label="Export deck" onClick={handleExportDeck}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8">
+                <path d="M12 16V4" />
+                <path d="m7 9 5-5 5 5" />
+                <path d="M5 20h14" />
+              </svg>
+            </ActionIcon>
+            <ActionIcon label="Import deck" onClick={handleImportDeck}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8">
+                <path d="M12 4v12" />
+                <path d="m17 11-5 5-5-5" />
+                <path d="M5 20h14" />
+              </svg>
+            </ActionIcon>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {canUseCloudDecks ? (
               <button
                 type="button"
                 onClick={handleSaveDraft}
                 className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90"
               >
-                Save draft
+                {savedState === "saved" ? "Saved" : "Save"}
               </button>
-              {isSignedIn ? (
+            ) : cloudDecksPending ? (
+              <button
+                type="button"
+                disabled
+                className="rounded-full bg-white/70 px-4 py-2.5 text-sm font-semibold text-black/70"
+              >
+                Connecting...
+              </button>
+            ) : hasClerkSession ? (
+              <button
+                type="button"
+                disabled
+                title="Convex deck storage is not authenticated."
+                className="rounded-full bg-white/70 px-4 py-2.5 text-sm font-semibold text-black/70"
+              >
+                Save Unavailable
+              </button>
+            ) : (
+              <SignInButton mode="modal">
+                <button
+                  type="button"
+                  className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90"
+                >
+                  Login to Save
+                </button>
+              </SignInButton>
+            )}
+            {canUseCloudDecks ? (
+              <button
+                type="button"
+                disabled
+                title="Publishing is not wired up yet."
+                className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white/45 transition disabled:cursor-not-allowed"
+              >
+                Publish
+              </button>
+            ) : cloudDecksPending ? (
+              <button
+                type="button"
+                disabled
+                className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white/45 transition disabled:cursor-not-allowed"
+              >
+                Connecting...
+              </button>
+            ) : hasClerkSession ? (
+              <button
+                type="button"
+                disabled
+                title="Convex deck storage is not authenticated."
+                className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white/45 transition disabled:cursor-not-allowed"
+              >
+                Publish Unavailable
+              </button>
+            ) : (
+              <SignInButton mode="modal">
                 <button
                   type="button"
                   className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525]"
                 >
-                  Publish deck
+                  Login to Publish
                 </button>
-              ) : (
-                <SignInButton mode="modal">
-                  <button className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525]">
-                    Login to publish
-                  </button>
-                </SignInButton>
-              )}
-              <span className="text-sm text-white/55">
-                {savedState === "saved" ? "Draft saved locally." : "Local drafts are saved to this browser."}
-              </span>
-            </div>
+              </SignInButton>
+            )}
           </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={handleRandomMulligan}
+              disabled={fullDeck.length === 0}
+              className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
+            >
+              Generate Mulligan
+            </button>
+
+            {mulliganOpen ? (
+              <div className="absolute left-0 top-[calc(100%+0.75rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+                      Opening Hand
+                    </p>
+                    <p className="text-sm text-white/64">
+                      {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRandomMulligan}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
+                      aria-label="Refresh mulligan hand"
+                    >
+                      ↻
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMulliganOpen(false)}
+                      className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
+                      aria-label="Close mulligan preview"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {mulliganCards.map((card, index) => (
+                    <div
+                      key={`${card.slug}-${index}`}
+                      className="overflow-hidden rounded-[14px] border border-white/10 bg-[#202020]"
+                    >
+                      <div className="relative aspect-[275/400] overflow-hidden">
+                        <Image
+                          src={`/${card.artPath}`}
+                          alt={card.name}
+                          fill
+                          sizes="120px"
+                          className="object-cover"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 12 }, (_, index) => {
+            const card = deckCards[index] ?? null;
+
+            return (
+              <DeckFrame
+                key={index}
+                card={card}
+                onRemove={() =>
+                  void updateSelectedDeck((deck) => ({
+                    ...deck,
+                    cardSlugs: deck.cardSlugs.filter(
+                      (_, currentIndex) => currentIndex !== index,
+                    ),
+                  }))
+                }
+                compact
+              />
+            );
+          })}
         </div>
       </aside>
 
-      <div className="space-y-4">
-        <div className="rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <div className="space-y-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/42">
-                  Card Library
-                </p>
-                <p className="text-sm text-white/64">
-                  Left click to add a card. Added cards gray out because each
-                  slot only allows one unique pick.
-                </p>
-              </div>
-              <div className="text-sm text-white/58">
-                {filteredCards.length} cards
+      <div className="flex min-h-0 flex-col gap-4 xl:min-h-0 xl:overflow-y-auto xl:pr-2">
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#1c1c1c] shadow-[0_22px_44px_rgba(0,0,0,0.32)] ring-1 ring-white/5">
+            <div className="flex items-center gap-3 px-4 py-2.5">
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search cards, effects, or keywords"
+                className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
+              />
+              <div className="flex items-center gap-2">
+                {filtersOpen ? (
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="rounded-full border border-white/10 bg-[#202020] px-4 py-2 text-[0.7rem] font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
+                  >
+                    Reset
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((open) => !open)}
+                  className="rounded-full border border-white/14 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
+                >
+                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                </button>
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#202020]">
-              <div className="flex items-center gap-3 px-4 py-2.5">
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search cards, effects, or keywords"
-                  className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/30"
-                />
-                <div className="flex items-center gap-2">
-                  {filtersOpen ? (
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      className="rounded-full border border-white/10 bg-[#252525] px-4 py-2 text-sm font-semibold text-white/84 transition hover:border-white/22 hover:bg-[#2b2b2b]"
-                    >
-                      Reset
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen((open) => !open)}
-                    className="rounded-full border border-white/12 bg-[#252525] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#2b2b2b]"
-                  >
-                    Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-                  </button>
-                </div>
-              </div>
-
-              {filtersOpen ? (
-                <div className="border-t border-white/10 bg-[#1c1c1c] px-4 pb-4 pt-4">
-                  <div className="grid gap-5 xl:grid-cols-2 xl:gap-x-8">
-                    <div className="space-y-3.5">
-                      <div className="space-y-2.5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                          Type
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {BUILDER_KIND_OPTIONS.map((kind) => (
-                            <FilterChip
-                              key={kind}
-                              label={kind}
-                              active={activeKinds.includes(kind)}
-                              onClick={() =>
-                                setActiveKinds((current) => toggleValue(current, kind))
-                              }
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2.5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                          Rarity
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {RARITY_OPTIONS.map((rarity) => (
-                            <FilterChip
-                              key={rarity}
-                              label={rarity}
-                              active={activeRarities.includes(rarity)}
-                              onClick={() =>
-                                setActiveRarities((current) => toggleValue(current, rarity))
-                              }
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2.5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                          Alignment
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {ALIGNMENT_OPTIONS.map((alignment) => (
-                            <FilterChip
-                              key={alignment}
-                              label={alignment}
-                              active={activeAlignments.includes(alignment)}
-                              onClick={() =>
-                                setActiveAlignments((current) =>
-                                  toggleValue(current, alignment),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
+            {filtersOpen ? (
+              <div className="border-t border-white/10 bg-[#1c1c1c] px-4 pb-3.5 pt-4">
+                <div className="grid gap-5 xl:grid-cols-2 xl:gap-x-8">
+                  <div className="space-y-3.5">
+                    <div className="space-y-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                        Type
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {BUILDER_KIND_OPTIONS.map((kind) => (
+                          <FilterChip
+                            key={kind}
+                            label={kind}
+                            active={activeKinds.includes(kind)}
+                            onClick={() =>
+                              setActiveKinds((current) => toggleValue(current, kind))
+                            }
+                          />
+                        ))}
                       </div>
                     </div>
 
-                    <div className="space-y-3.5">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                            Mana Cost
-                          </p>
-                          <span className="text-sm font-medium text-white/80">
-                            {manaRange[0]} to {manaRange[1]}
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-[#202020] px-3 py-2.5">
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={manaRange}
-                            onValueChange={(value) =>
-                              setManaRange([value[0] ?? 0, value[1] ?? 10])
+                    <div className="space-y-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                        Rarity
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {RARITY_OPTIONS.map((rarity) => (
+                          <FilterChip
+                            key={rarity}
+                            label={rarity}
+                            active={activeRarities.includes(rarity)}
+                            onClick={() =>
+                              setActiveRarities((current) => toggleValue(current, rarity))
                             }
                           />
-                        </div>
+                        ))}
                       </div>
+                    </div>
 
-                      <div className="space-y-2.5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                          Keywords
+                    <div className="space-y-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                        Alignment
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {ALIGNMENT_OPTIONS.map((alignment) => (
+                          <FilterChip
+                            key={alignment}
+                            label={alignment}
+                            active={activeAlignments.includes(alignment)}
+                            onClick={() =>
+                              setActiveAlignments((current) =>
+                                toggleValue(current, alignment),
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                          Mana Cost
                         </p>
-                        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
-                          {KEYWORD_OPTIONS.map((keyword) => (
-                            <FilterChip
-                              key={keyword}
-                              label={keyword}
-                              active={activeKeywords.includes(keyword)}
-                              onClick={() =>
-                                setActiveKeywords((current) =>
-                                  toggleValue(current, keyword),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
+                        <span className="text-sm font-medium text-white/80">
+                          {manaRange[0]} to {manaRange[1]}
+                        </span>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-[#202020] px-3 py-2.5">
+                        <Slider
+                          min={0}
+                          max={10}
+                          step={1}
+                          value={manaRange}
+                          onValueChange={(value) =>
+                            setManaRange([value[0] ?? 0, value[1] ?? 10])
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                        Keywords
+                      </p>
+                      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+                        {KEYWORD_OPTIONS.map((keyword) => (
+                          <FilterChip
+                            key={keyword}
+                            label={keyword}
+                            active={activeKeywords.includes(keyword)}
+                            onClick={() =>
+                              setActiveKeywords((current) =>
+                                toggleValue(current, keyword),
+                              )
+                            }
+                            className="w-full whitespace-nowrap py-[8px]! px-3 text-center text-[0.8rem] leading-none"
+                          />
+                        ))}
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+        <div className="flex-1 rounded-[32px] border border-white/10 bg-[#1c1c1c] p-5 pb-8 shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
             {filteredCards.map((card) => {
               const isSelected =
                 legendarySlug === card.slug || cardSlugs.includes(card.slug);
@@ -689,7 +1287,6 @@ export function DeckbuilderWorkspace({
                 <BuilderLibraryCard
                   key={card.slug}
                   card={card}
-                  selected={isSelected}
                   disabled={isDisabled}
                   overlayLabel={overlayLabel}
                   onAdd={() => handleAddCard(card)}

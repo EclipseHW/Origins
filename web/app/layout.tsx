@@ -26,9 +26,9 @@ export default function RootLayout({
       <body className={`${nunitoSans.variable} antialiased`}>
         <ClerkProvider>
           <ConvexClientProvider>
-            <div className="min-h-screen text-slate-100">
+            <div className="flex min-h-screen flex-col text-slate-100">
               <SiteHeader />
-              <div className="w-full px-6 py-10">{children}</div>
+              <div className="flex-1 min-h-0 w-full px-6 pb-0 pt-10">{children}</div>
             </div>
           </ConvexClientProvider>
         </ClerkProvider>
