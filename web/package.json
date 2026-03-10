@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "sync:card-code-ids": "node scripts/sync-card-code-ids.mjs",
     "convex:dev": "convex dev"
   },
   "dependencies": {

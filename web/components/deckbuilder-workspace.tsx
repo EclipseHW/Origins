@@ -15,6 +15,8 @@ import {
 
 const BUILDER_KIND_OPTIONS = ["Unit", "Spell"] as const;
 const EMPTY_CARD_SLUGS: string[] = [];
+const EXTERNAL_DECK_CODE_PREFIX = "KGBLDC";
+const EXTERNAL_DECK_CODE_VERSION = "v1";
 
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
 type SavedState = "idle" | "saved";
@@ -118,6 +120,114 @@ function drawRandomHand(deck: string[], handSize: number): string[] {
   }
 
   return pool.slice(0, Math.min(handSize, pool.length));
+}
+
+type ImportedDeckState = {
+  legendarySlug: string | null;
+  cardSlugs: string[];
+};
+
+function encodeLocalDeckCode(deck: ImportedDeckState): string {
+  const payload = JSON.stringify(deck);
+  return `OB1:${btoa(payload)}`;
+}
+
+async function computeExternalDeckCodeChecksum(payload: string): Promise<string> {
+  const bytes = new TextEncoder().encode(payload);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 8);
+}
+
+async function encodeExternalDeckCode(
+  deck: ImportedDeckState,
+  cardBySlug: Record<string, CardDefinition>,
+): Promise<string | null> {
+  const slugs = [deck.legendarySlug, ...deck.cardSlugs].filter(
+    (slug): slug is string => typeof slug === "string" && slug.length > 0,
+  );
+  const externalIds: string[] = [];
+
+  for (const slug of slugs) {
+    const externalCodeId = cardBySlug[slug]?.externalCodeId;
+    if (!externalCodeId) {
+      return null;
+    }
+
+    externalIds.push(externalCodeId);
+  }
+
+  const payloadText = [...externalIds].sort((left, right) => left.localeCompare(right)).join("|");
+  const decodedPayload = `${EXTERNAL_DECK_CODE_VERSION}|${payloadText}`;
+  const payload = `${EXTERNAL_DECK_CODE_PREFIX}${btoa(decodedPayload)}`;
+  const checksum = await computeExternalDeckCodeChecksum(decodedPayload);
+
+  return `${payload}:${checksum}`;
+}
+
+function decodeLocalDeckCode(code: string): ImportedDeckState | null {
+  if (!code.startsWith("OB1:")) {
+    return null;
+  }
+
+  try {
+    const decoded = atob(code.slice(4));
+    const parsed = JSON.parse(decoded) as Partial<ImportedDeckState>;
+
+    return {
+      legendarySlug:
+        typeof parsed.legendarySlug === "string" ? parsed.legendarySlug : null,
+      cardSlugs: Array.isArray(parsed.cardSlugs)
+        ? parsed.cardSlugs.filter((slug): slug is string => typeof slug === "string")
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decodeExternalDeckCode(
+  code: string,
+  cardByExternalId: Record<string, CardDefinition>,
+): ImportedDeckState | null {
+  const [payload] = code.trim().split(":");
+  if (!payload || !payload.startsWith(EXTERNAL_DECK_CODE_PREFIX)) {
+    return null;
+  }
+
+  try {
+    const decoded = atob(payload.slice(EXTERNAL_DECK_CODE_PREFIX.length));
+    const [version, ...entries] = decoded.split("|").filter(Boolean);
+    if (version !== EXTERNAL_DECK_CODE_VERSION) {
+      return null;
+    }
+
+    let legendarySlug: string | null = null;
+    const cardSlugs: string[] = [];
+
+    for (const entry of entries) {
+      const card = cardByExternalId[entry];
+      if (!card) {
+        return null;
+      }
+
+      if (entry.endsWith("_MC")) {
+        legendarySlug = card.slug;
+        continue;
+      }
+
+      cardSlugs.push(card.slug);
+    }
+
+    return {
+      legendarySlug,
+      cardSlugs,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function FilterChip({
@@ -326,7 +436,7 @@ function DeckListCard({
               }}
               placeholder="Deck name"
               autoFocus
-              className="mt-2 w-full rounded-full border border-black/12 bg-black/[0.04] px-3 py-2 text-sm font-semibold text-black outline-none placeholder:text-black/30 focus:border-black/20"
+              className="mt-2 w-full rounded-full border border-black/12 bg-black/4 px-3 py-2 text-sm font-semibold text-black outline-none placeholder:text-black/30 focus:border-black/20"
             />
           ) : (
             <p className="truncate pt-1 text-base font-semibold text-black">
@@ -351,7 +461,7 @@ function DeckListCard({
               aria-label={`Save ${formatDeckName(deck.deckName)}`}
               title="Save deck name"
             >
-              <Image src="/icons/check.svg" alt="" width={18} height={18} />
+              <Image src="/icons/check.png" alt="" width={18} height={18} />
             </button>
           ) : (
             <button
@@ -378,7 +488,7 @@ function DeckListCard({
             aria-label={`Delete ${formatDeckName(deck.deckName)}`}
             title="Delete deck"
           >
-            <Image src="/icons/x.svg" alt="" width={18} height={18} />
+            <Image src="/icons/trash-1.png" alt="" width={18} height={18} />
           </button>
         </div>
       </div>
@@ -408,6 +518,15 @@ export function DeckbuilderWorkspace({
     () => Object.fromEntries(cards.map((card) => [card.slug, card])),
     [cards],
   );
+  const cardByExternalId = useMemo(
+    () =>
+      Object.fromEntries(
+        cards
+          .filter((card) => Boolean(card.externalCodeId))
+          .map((card) => [card.externalCodeId as string, card]),
+      ),
+    [cards],
+  );
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeKinds, setActiveKinds] = useState<BuilderKind[]>([
@@ -428,6 +547,7 @@ export function DeckbuilderWorkspace({
   const [savedState, setSavedState] = useState<SavedState>("idle");
   const [mulliganHand, setMulliganHand] = useState<string[]>([]);
   const [mulliganOpen, setMulliganOpen] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   useEffect(() => {
     if (savedState !== "saved") {
@@ -437,6 +557,15 @@ export function DeckbuilderWorkspace({
     const timeout = window.setTimeout(() => setSavedState("idle"), 1800);
     return () => window.clearTimeout(timeout);
   }, [savedState]);
+
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setCopyFeedback(false), 1500);
+    return () => window.clearTimeout(timeout);
+  }, [copyFeedback]);
 
   const savedDecks = useMemo(() => {
     if (!isSignedIn) {
@@ -727,6 +856,67 @@ export function DeckbuilderWorkspace({
     setMulliganOpen(true);
   }
 
+  async function handleCopyDeckCode() {
+    if (!selectedDeck) {
+      return;
+    }
+
+    const code = await encodeExternalDeckCode(
+      {
+        legendarySlug: selectedDeck.legendarySlug,
+        cardSlugs: selectedDeck.cardSlugs,
+      },
+      cardBySlug,
+    );
+
+    if (!code) {
+      window.alert("This deck contains cards that do not have export codes yet.");
+      return;
+    }
+
+    const localCode = encodeLocalDeckCode({
+      legendarySlug: selectedDeck.legendarySlug,
+      cardSlugs: selectedDeck.cardSlugs,
+    });
+
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyFeedback(true);
+    } catch {
+      window.prompt("Copy deck code", code ?? localCode);
+      setCopyFeedback(true);
+    }
+  }
+
+  async function handleImportDeckCode() {
+    if (!selectedDeck) {
+      return;
+    }
+
+    const value = window.prompt("Paste deck code");
+    if (!value) {
+      return;
+    }
+
+    const importedDeck =
+      decodeLocalDeckCode(value) ?? decodeExternalDeckCode(value, cardByExternalId);
+
+    if (!importedDeck) {
+      window.alert("Invalid or unsupported deck code.");
+      return;
+    }
+
+    const uniqueCardSlugs = importedDeck.cardSlugs.filter(
+      (slug, index, items) => items.indexOf(slug) === index,
+    );
+
+    await updateSelectedDeck((deck) => ({
+      ...deck,
+      legendarySlug: importedDeck.legendarySlug,
+      cardSlugs: uniqueCardSlugs.slice(0, 12),
+    }));
+  }
+
   return (
     <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
       <aside className="flex flex-col gap-4 xl:sticky xl:top-0 xl:h-full xl:self-start xl:overflow-hidden">
@@ -826,7 +1016,7 @@ export function DeckbuilderWorkspace({
                           className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
                           aria-label="Save deck name"
                         >
-                          <Image src="/icons/check.svg" alt="" width={18} height={18} />
+                          <Image src="/icons/check.png" alt="" width={18} height={18} />
                         </button>
                       ) : (
                         <button
@@ -844,7 +1034,7 @@ export function DeckbuilderWorkspace({
                         className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-red-50 transition hover:bg-red-100"
                         aria-label="Delete deck"
                       >
-                        <Image src="/icons/x.svg" alt="" width={18} height={18} />
+                        <Image src="/icons/trash-1.png" alt="" width={18} height={18} />
                       </button>
                     </>
                   ) : null}
@@ -908,6 +1098,45 @@ export function DeckbuilderWorkspace({
             </div>
           ) : (
             <div className="mt-2 flex-1 space-y-3">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyDeckCode()}
+                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  aria-label="Copy deck code"
+                  title="Copy deck code"
+                >
+                  <Image
+                    src={copyFeedback ? "/icons/check.png" : "/icons/export.png"}
+                    alt=""
+                    width={20}
+                    height={20}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleImportDeckCode()}
+                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  aria-label="Import deck code"
+                  title="Import deck code"
+                >
+                  <Image src="/icons/import.png" alt="" width={20} height={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedDeck) {
+                      void handleDeleteSavedDeck(selectedDeck._id);
+                    }
+                  }}
+                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  aria-label="Delete deck"
+                  title="Delete deck"
+                >
+                  <Image src="/icons/trash-1.png" alt="" width={20} height={20} />
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <SignInButton mode="modal">
                   <button
@@ -974,7 +1203,7 @@ export function DeckbuilderWorkspace({
                           key={`${card.slug}-${index}`}
                           className="overflow-hidden rounded-[14px] border border-white/10 bg-[#202020]"
                         >
-                          <div className="relative aspect-[275/400] overflow-hidden">
+                          <div className="relative aspect-275/400 overflow-hidden">
                             <Image
                               src={`/${card.artPath}`}
                               alt={card.name}
@@ -1062,7 +1291,7 @@ export function DeckbuilderWorkspace({
                       key={`${card.slug}-${index}`}
                       className="overflow-hidden rounded-[14px] border border-white/10 bg-[#202020]"
                     >
-                      <div className="relative aspect-[275/400] overflow-hidden">
+                      <div className="relative aspect-275/400 overflow-hidden">
                         <Image
                           src={`/${card.artPath}`}
                           alt={card.name}
