@@ -4,9 +4,11 @@ import { SignInButton, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeckCache } from "@/components/deck-cache-provider";
 import { Slider } from "@/components/ui/slider";
 import type { CardDefinition } from "@/lib/cards";
+import type { DeckDraft, DeckRecord } from "@/lib/deck-types";
 import {
   ALIGNMENT_OPTIONS,
   KEYWORD_OPTIONS,
@@ -20,17 +22,7 @@ const EXTERNAL_DECK_CODE_VERSION = "v1";
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
 type SavedState = "idle" | "saved";
 
-type DeckDraft = {
-  deckName: string;
-  legendarySlug: string | null;
-  cardSlugs: string[];
-};
-
-type DeckRecord = DeckDraft & {
-  _id: string;
-  userId?: string;
-  publishedAt: number | null;
-  createdAt: number;
+type OptimisticDeck = DeckDraft & {
   updatedAt: number;
 };
 
@@ -105,6 +97,23 @@ function createEmptyDeck(name = ""): DeckRecord {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+function toDeckDraft(deck: DeckDraft): DeckDraft {
+  return {
+    deckName: deck.deckName,
+    legendarySlug: deck.legendarySlug,
+    cardSlugs: [...deck.cardSlugs],
+  };
+}
+
+function deckDraftsMatch(left: DeckDraft, right: DeckDraft): boolean {
+  return (
+    left.deckName === right.deckName &&
+    left.legendarySlug === right.legendarySlug &&
+    left.cardSlugs.length === right.cardSlugs.length &&
+    left.cardSlugs.every((slug, index) => slug === right.cardSlugs[index])
+  );
 }
 
 function getOpeningHandSize(legendaryCard: CardDefinition | null): number {
@@ -496,16 +505,24 @@ export function DeckbuilderWorkspace({
 }: {
   cards: CardDefinition[];
 }) {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const { isLoading: convexAuthLoading, isAuthenticated: convexAuthenticated } =
     useConvexAuth();
+  const { decksByUserId, setCachedDecks } = useDeckCache();
   const hasClerkSession = isLoaded && isSignedIn;
   const canUseCloudDecks = hasClerkSession && convexAuthenticated;
   const cloudDecksPending = hasClerkSession && convexAuthLoading;
+  const currentUserId = user?.id ?? null;
   const signedInDecks = useQuery(
     listMyDecksReference,
     canUseCloudDecks ? {} : "skip",
   );
+  const cachedSignedInDecks = currentUserId
+    ? decksByUserId[currentUserId]
+    : undefined;
+  const hydratedSignedInDecks = signedInDecks ?? cachedSignedInDecks;
+  const cloudDecksLoading =
+    canUseCloudDecks && hydratedSignedInDecks === undefined;
   const createDeckMutation = useMutation(createDeckReference);
   const updateDeckMutation = useMutation(updateDeckReference);
   const deleteDeckMutation = useMutation(deleteDeckReference);
@@ -544,6 +561,18 @@ export function DeckbuilderWorkspace({
   const [mulliganHand, setMulliganHand] = useState<string[]>([]);
   const [mulliganOpen, setMulliganOpen] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [optimisticDecks, setOptimisticDecks] = useState<
+    Record<string, OptimisticDeck>
+  >({});
+  const optimisticDecksRef = useRef<Record<string, OptimisticDeck>>({});
+  const savedDecksRef = useRef<DeckRecord[]>([]);
+  const cloudSaveTimersRef = useRef<Record<string, number>>({});
+  const pendingCloudSavesRef = useRef<Record<string, DeckDraft>>({});
+  const pendingCloudSaveStateRef = useRef<
+    Partial<Record<string, SavedState>>
+  >({});
+  const inFlightCloudSavesRef = useRef<Record<string, boolean>>({});
+  const cloudSaveWaitersRef = useRef<Record<string, Array<() => void>>>({});
 
   useEffect(() => {
     if (savedState !== "saved") {
@@ -563,6 +592,18 @@ export function DeckbuilderWorkspace({
     return () => window.clearTimeout(timeout);
   }, [copyFeedback]);
 
+  useEffect(() => {
+    optimisticDecksRef.current = optimisticDecks;
+  }, [optimisticDecks]);
+
+  useEffect(() => {
+    if (!canUseCloudDecks || !currentUserId || signedInDecks === undefined) {
+      return;
+    }
+
+    setCachedDecks(currentUserId, signedInDecks);
+  }, [canUseCloudDecks, currentUserId, setCachedDecks, signedInDecks]);
+
   const savedDecks = useMemo(() => {
     if (!isSignedIn) {
       return guestDecks;
@@ -572,8 +613,69 @@ export function DeckbuilderWorkspace({
       return [];
     }
 
-    return signedInDecks ?? [];
-  }, [canUseCloudDecks, guestDecks, isSignedIn, signedInDecks]);
+    return (hydratedSignedInDecks ?? []).map((deck) => {
+      const optimisticDeck = optimisticDecks[deck._id];
+
+      return optimisticDeck ? { ...deck, ...optimisticDeck } : deck;
+    });
+  }, [
+    canUseCloudDecks,
+    guestDecks,
+    hydratedSignedInDecks,
+    isSignedIn,
+    optimisticDecks,
+  ]);
+
+  useEffect(() => {
+    savedDecksRef.current = savedDecks;
+  }, [savedDecks]);
+
+  useEffect(() => {
+    if (!canUseCloudDecks) {
+      setOptimisticDecks((current) => {
+        if (Object.keys(current).length === 0) {
+          return current;
+        }
+
+        optimisticDecksRef.current = {};
+        return {};
+      });
+      return;
+    }
+
+    if (!signedInDecks) {
+      return;
+    }
+
+    setOptimisticDecks((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const [deckId, optimisticDeck] of Object.entries(current)) {
+        const serverDeck = signedInDecks.find((deck) => deck._id === deckId);
+        if (!serverDeck || deckDraftsMatch(serverDeck, optimisticDeck)) {
+          delete next[deckId];
+          changed = true;
+        }
+      }
+
+      if (!changed) {
+        return current;
+      }
+
+      optimisticDecksRef.current = next;
+      return next;
+    });
+  }, [canUseCloudDecks, signedInDecks]);
+
+  useEffect(
+    () => () => {
+      Object.values(cloudSaveTimersRef.current).forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+    },
+    [],
+  );
   const sortedDecks = useMemo(
     () => [...savedDecks].sort((left, right) => right.updatedAt - left.updatedAt),
     [savedDecks],
@@ -690,24 +792,176 @@ export function DeckbuilderWorkspace({
     );
   }
 
+  function resolveCloudSaveWaiters(deckId: string) {
+    const waiters = cloudSaveWaitersRef.current[deckId];
+    if (!waiters) {
+      return;
+    }
+
+    delete cloudSaveWaitersRef.current[deckId];
+    waiters.forEach((resolve) => resolve());
+  }
+
+  function waitForCloudSave(deckId: string) {
+    if (
+      !inFlightCloudSavesRef.current[deckId] &&
+      !pendingCloudSavesRef.current[deckId] &&
+      !cloudSaveTimersRef.current[deckId]
+    ) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      cloudSaveWaitersRef.current[deckId] = [
+        ...(cloudSaveWaitersRef.current[deckId] ?? []),
+        resolve,
+      ];
+    });
+  }
+
+  function getCurrentDeck(deckId: string) {
+    const baseDeck =
+      savedDecksRef.current.find((deck) => deck._id === deckId) ?? null;
+    if (!baseDeck) {
+      return null;
+    }
+
+    const optimisticDeck = optimisticDecksRef.current[deckId];
+    return optimisticDeck ? { ...baseDeck, ...optimisticDeck } : baseDeck;
+  }
+
+  function setOptimisticDeck(deckId: string, deck: DeckDraft) {
+    const nextOptimisticDeck: OptimisticDeck = {
+      ...toDeckDraft(deck),
+      updatedAt: Date.now(),
+    };
+
+    setOptimisticDecks((current) => {
+      const next = {
+        ...current,
+        [deckId]: nextOptimisticDeck,
+      };
+
+      optimisticDecksRef.current = next;
+      return next;
+    });
+  }
+
+  function clearOptimisticDeck(deckId: string) {
+    setOptimisticDecks((current) => {
+      if (!(deckId in current)) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[deckId];
+      optimisticDecksRef.current = next;
+      return next;
+    });
+  }
+
+  async function flushCloudSave(deckId: string): Promise<void> {
+    const timer = cloudSaveTimersRef.current[deckId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete cloudSaveTimersRef.current[deckId];
+    }
+
+    if (inFlightCloudSavesRef.current[deckId]) {
+      await waitForCloudSave(deckId);
+      return;
+    }
+
+    const draft = pendingCloudSavesRef.current[deckId];
+    if (!draft) {
+      return;
+    }
+
+    delete pendingCloudSavesRef.current[deckId];
+    const nextSavedState = pendingCloudSaveStateRef.current[deckId];
+    delete pendingCloudSaveStateRef.current[deckId];
+    inFlightCloudSavesRef.current[deckId] = true;
+
+    try {
+      await updateDeckMutation({
+        deckId,
+        deckName: draft.deckName,
+        legendarySlug: draft.legendarySlug,
+        cardSlugs: draft.cardSlugs,
+      });
+
+      if (nextSavedState) {
+        setSavedState(nextSavedState);
+      }
+    } finally {
+      inFlightCloudSavesRef.current[deckId] = false;
+
+      if (pendingCloudSavesRef.current[deckId]) {
+        await flushCloudSave(deckId);
+      } else {
+        resolveCloudSaveWaiters(deckId);
+      }
+    }
+  }
+
+  async function queueCloudSave(
+    deckId: string,
+    deck: DeckDraft,
+    options?: { immediate?: boolean; savedState?: SavedState },
+  ) {
+    pendingCloudSavesRef.current[deckId] = toDeckDraft(deck);
+
+    if (options?.savedState) {
+      pendingCloudSaveStateRef.current[deckId] = options.savedState;
+    }
+
+    const existingTimer = cloudSaveTimersRef.current[deckId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      delete cloudSaveTimersRef.current[deckId];
+    }
+
+    if (options?.immediate) {
+      await flushCloudSave(deckId);
+      return;
+    }
+
+    cloudSaveTimersRef.current[deckId] = window.setTimeout(() => {
+      delete cloudSaveTimersRef.current[deckId];
+      void flushCloudSave(deckId);
+    }, 250);
+  }
+
+  async function settleCloudDeck(deckId: string) {
+    await flushCloudSave(deckId);
+    await waitForCloudSave(deckId);
+  }
+
   async function persistDeck(
     deckId: string,
     updater: (deck: DeckRecord) => DeckRecord,
+    options?: { immediate?: boolean; savedState?: SavedState },
   ) {
-    const deck = savedDecks.find((candidate) => candidate._id === deckId);
+    const deck = getCurrentDeck(deckId);
     if (!deck) {
       return;
     }
 
     const nextDeck = updater(deck);
     if (canUseCloudDecks) {
-      await updateDeckMutation({
-        deckId,
-        deckName: nextDeck.deckName,
-        legendarySlug: nextDeck.legendarySlug,
-        cardSlugs: nextDeck.cardSlugs,
-      });
-      setSavedState("saved");
+      const nextDraft = toDeckDraft(nextDeck);
+      const draftChanged = !deckDraftsMatch(deck, nextDraft);
+
+      if (!draftChanged && !options?.savedState) {
+        return;
+      }
+
+      if (draftChanged) {
+        setOptimisticDeck(deckId, nextDraft);
+        setSavedState("idle");
+      }
+
+      await queueCloudSave(deckId, nextDraft, options);
       return;
     }
 
@@ -730,7 +984,7 @@ export function DeckbuilderWorkspace({
       setSelectedDeckId(nextDeckId);
       setEditingDeckId(nextDeckId);
       setRenameValue("");
-      setSavedState("saved");
+      setSavedState("idle");
       setMulliganHand([]);
       setMulliganOpen(false);
       return;
@@ -767,7 +1021,7 @@ export function DeckbuilderWorkspace({
     await persistDeck(deckId, (deck) => ({
       ...deck,
       deckName: renameValue.trim(),
-    }));
+    }), { immediate: true });
     setEditingDeckId(null);
   }
 
@@ -786,7 +1040,9 @@ export function DeckbuilderWorkspace({
 
     const remainingDecks = savedDecks.filter((deck) => deck._id !== deckId);
     if (canUseCloudDecks) {
+      await settleCloudDeck(deckId);
       await deleteDeckMutation({ deckId });
+      clearOptimisticDeck(deckId);
     } else if (!hasClerkSession) {
       if (remainingDecks.length === 0) {
         setGuestDecks([createEmptyDeck()]);
@@ -801,7 +1057,7 @@ export function DeckbuilderWorkspace({
     }
 
     setEditingDeckId((current) => (current === deckId ? null : current));
-    setSavedState(canUseCloudDecks ? "saved" : "idle");
+    setSavedState("idle");
     setMulliganHand([]);
     setMulliganOpen(false);
   }
@@ -836,7 +1092,10 @@ export function DeckbuilderWorkspace({
       return;
     }
 
-    await persistDeck(selectedDeck._id, (deck) => deck);
+    await persistDeck(selectedDeck._id, (deck) => deck, {
+      immediate: true,
+      savedState: "saved",
+    });
     if (!isSignedIn) {
       setSavedState("idle");
     }
@@ -847,8 +1106,8 @@ export function DeckbuilderWorkspace({
       return;
     }
 
+    await settleCloudDeck(selectedDeck._id);
     await publishDeckMutation({ deckId: selectedDeck._id });
-    setSavedState("saved");
   }
 
   function handleRandomMulligan() {
@@ -925,7 +1184,7 @@ export function DeckbuilderWorkspace({
     <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
       <aside className="flex flex-col gap-4 xl:sticky xl:top-0 xl:h-full xl:self-start xl:overflow-hidden">
         {!hasClerkSession ? null : !selectedDeck ? (
-          canUseCloudDecks ? (
+          canUseCloudDecks && !cloudDecksLoading ? (
             <div className="space-y-3 rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <div className="flex items-center justify-between gap-3">
                 <h1 className="text-2xl font-semibold tracking-tight text-white">
@@ -972,13 +1231,15 @@ export function DeckbuilderWorkspace({
                 )}
               </div>
             </div>
-          ) : cloudDecksPending ? (
+          ) : cloudDecksPending || cloudDecksLoading ? (
             <div className="rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
                 Saved Decks
               </p>
               <p className="pt-2 text-sm text-white/62">
-                Connecting your account to deck storage...
+                {cloudDecksPending
+                  ? "Connecting your account to deck storage..."
+                  : "Loading your saved decks..."}
               </p>
             </div>
           ) : (
