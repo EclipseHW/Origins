@@ -3,6 +3,14 @@
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Download,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeckCache } from "@/components/deck-cache-provider";
@@ -471,7 +479,7 @@ function DeckListCard({
             aria-label={`Save ${formatDeckName(deck.deckName)}`}
             title="Save deck name"
           >
-            <Image src="/icons/check.svg" alt="" width={24} height={24} />
+            <Check size={18} strokeWidth={2.2} color="#34d399" />
           </button>
         ) : (
           <button
@@ -484,7 +492,7 @@ function DeckListCard({
             aria-label={`Edit ${formatDeckName(deck.deckName)}`}
             title="Edit deck name"
           >
-            <Image src="/icons/edit.svg" alt="" width={24} height={24} />
+            <Pencil size={18} strokeWidth={2.2} />
           </button>
         )}
         <button
@@ -497,7 +505,7 @@ function DeckListCard({
           aria-label={`Delete ${formatDeckName(deck.deckName)}`}
           title="Delete deck"
         >
-          <Image src="/icons/delete.svg" alt="" width={24} height={24} />
+          <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
         </button>
       </div>
     </div>
@@ -514,8 +522,9 @@ export function DeckbuilderWorkspace({
     useConvexAuth();
   const { decksByUserId, setCachedDecks } = useDeckCache();
   const hasClerkSession = isLoaded && isSignedIn;
+  const isSignedOut = isLoaded && !isSignedIn;
   const canUseCloudDecks = hasClerkSession && convexAuthenticated;
-  const cloudDecksPending = hasClerkSession && convexAuthLoading;
+  const authBooting = !isLoaded || (hasClerkSession && convexAuthLoading);
   const currentUserId = user?.id ?? null;
   const signedInDecks = useQuery(
     listMyDecksReference,
@@ -609,8 +618,12 @@ export function DeckbuilderWorkspace({
   }, [canUseCloudDecks, currentUserId, setCachedDecks, signedInDecks]);
 
   const savedDecks = useMemo(() => {
-    if (!isSignedIn) {
+    if (isSignedOut) {
       return guestDecks;
+    }
+
+    if (!hasClerkSession) {
+      return [];
     }
 
     if (!canUseCloudDecks) {
@@ -622,13 +635,7 @@ export function DeckbuilderWorkspace({
 
       return optimisticDeck ? { ...deck, ...optimisticDeck } : deck;
     });
-  }, [
-    canUseCloudDecks,
-    guestDecks,
-    hydratedSignedInDecks,
-    isSignedIn,
-    optimisticDecks,
-  ]);
+  }, [canUseCloudDecks, guestDecks, hasClerkSession, hydratedSignedInDecks, isSignedOut, optimisticDecks]);
 
   useEffect(() => {
     savedDecksRef.current = savedDecks;
@@ -684,13 +691,13 @@ export function DeckbuilderWorkspace({
     () => [...savedDecks].sort((left, right) => right.updatedAt - left.updatedAt),
     [savedDecks],
   );
-  const effectiveSelectedDeckId = hasClerkSession
+  const effectiveSelectedDeckId = isSignedOut
     ? selectedDeckId && sortedDecks.some((deck) => deck._id === selectedDeckId)
       ? selectedDeckId
-      : null
+      : sortedDecks[0]?._id ?? null
     : selectedDeckId && sortedDecks.some((deck) => deck._id === selectedDeckId)
       ? selectedDeckId
-      : sortedDecks[0]?._id ?? null;
+      : null;
   const selectedDeck = useMemo(() => {
     if (sortedDecks.length === 0 || !effectiveSelectedDeckId) {
       return null;
@@ -698,6 +705,9 @@ export function DeckbuilderWorkspace({
 
     return sortedDecks.find((deck) => deck._id === effectiveSelectedDeckId) ?? null;
   }, [effectiveSelectedDeckId, sortedDecks]);
+  const workspaceLoading =
+    !selectedDeck &&
+    (authBooting || (hasClerkSession && canUseCloudDecks && cloudDecksLoading));
   const legendarySlug = selectedDeck?.legendarySlug ?? null;
   const cardSlugs = selectedDeck?.cardSlugs ?? EMPTY_CARD_SLUGS;
   const legendaryCard = legendarySlug ? cardBySlug[legendarySlug] ?? null : null;
@@ -1186,8 +1196,7 @@ export function DeckbuilderWorkspace({
   return (
     <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
       <aside className="flex flex-col gap-4 xl:sticky xl:top-0 xl:h-full xl:self-start xl:overflow-hidden">
-        {!hasClerkSession ? null : !selectedDeck ? (
-          canUseCloudDecks && !cloudDecksLoading ? (
+        {isSignedOut || selectedDeck ? null : canUseCloudDecks && !cloudDecksLoading ? (
             <div className="space-y-3 rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <div className="flex items-center justify-between gap-3">
                 <h1 className="text-2xl font-semibold tracking-tight text-white">
@@ -1234,18 +1243,16 @@ export function DeckbuilderWorkspace({
                 )}
               </div>
             </div>
-          ) : cloudDecksPending || cloudDecksLoading ? (
+          ) : workspaceLoading ? (
             <div className="rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
                 Saved Decks
               </p>
               <p className="pt-2 text-sm text-white/62">
-                {cloudDecksPending
-                  ? "Connecting your account to deck storage..."
-                  : "Loading your saved decks..."}
+                Loading your workspace...
               </p>
             </div>
-          ) : (
+          ) : hasClerkSession ? (
             <div className="rounded-[28px] border border-amber-400/20 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
                 Saved Decks
@@ -1254,10 +1261,9 @@ export function DeckbuilderWorkspace({
                 Signed in, but Convex deck storage is not authenticated yet.
               </p>
             </div>
-          )
-        ) : null}
+          ) : null}
 
-        {!hasClerkSession || Boolean(selectedDeck) ? (
+        {isSignedOut || Boolean(selectedDeck) ? (
           <>
             <div className="flex items-start gap-4">
           <div className="w-full max-w-[160px] shrink-0">
@@ -1283,7 +1289,7 @@ export function DeckbuilderWorkspace({
                     aria-label="Back to saved decks"
                     title="Back"
                   >
-                    <Image src="/icons/back.svg" alt="" width={20} height={20} />
+                    <ArrowLeft size={18} strokeWidth={2.2} />
                   </button>
                 ) : null}
                 <button
@@ -1293,12 +1299,11 @@ export function DeckbuilderWorkspace({
                   aria-label="Copy deck code"
                   title="Copy deck code"
                 >
-                  <Image
-                    src={copyFeedback ? "/icons/check.svg" : "/icons/export.svg"}
-                    alt=""
-                    width={24}
-                    height={24}
-                  />
+                  {copyFeedback ? (
+                    <Check size={20} strokeWidth={2.2} color="#34d399" />
+                  ) : (
+                    <Copy size={20} strokeWidth={2.2} />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1307,7 +1312,7 @@ export function DeckbuilderWorkspace({
                   aria-label="Import deck code"
                   title="Import deck code"
                 >
-                  <Image src="/icons/import.svg" alt="" width={24} height={24} />
+                  <Download size={20} strokeWidth={2.2} />
                 </button>
                 <button
                   type="button"
@@ -1320,7 +1325,7 @@ export function DeckbuilderWorkspace({
                   aria-label="Delete deck"
                   title="Delete deck"
                 >
-                  <Image src="/icons/delete.svg" alt="" width={20} height={20} />
+                  <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
                 </button>
                 <div className="min-w-0 flex-1">
                   {hasClerkSession ? (

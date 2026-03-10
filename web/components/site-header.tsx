@@ -20,7 +20,7 @@ export function SiteHeader() {
   const { isLoaded, isSignedIn } = useUser();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-2xl">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/5 backdrop-blur-2xl">
       <div className="flex w-full items-center justify-between gap-6 px-6 py-4">
         <div className="flex items-center gap-8">
           <Link
@@ -52,7 +52,7 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-3">
-          {isLoaded && isSignedIn ? (
+          {!isLoaded ? null : isSignedIn ? (
             <UserButton />
           ) : (
             <>
