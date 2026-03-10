@@ -398,10 +398,14 @@ function DeckListCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
+      role={editing ? undefined : "button"}
+      tabIndex={editing ? undefined : 0}
+      onClick={editing ? undefined : onSelect}
       onKeyDown={(event) => {
+        if (editing) {
+          return;
+        }
+
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelect();
@@ -412,7 +416,7 @@ function DeckListCard({
           ? "border-[#e0c15a] bg-[linear-gradient(135deg,#231e12_0%,#17130d_100%)] shadow-[0_18px_30px_rgba(0,0,0,0.24),inset_0_0_0_1px_rgba(224,193,90,0.18)]"
           : "border-[#2a2a2a] bg-[linear-gradient(135deg,#1d1f26_0%,#14161c_100%)] hover:border-[#343844]"
       }`}
-      aria-label={`Open ${formatDeckName(deck.deckName)}`}
+      aria-label={editing ? undefined : `Open ${formatDeckName(deck.deckName)}`}
     >
       <div className="relative h-[62px] w-[46px] shrink-0 overflow-hidden rounded-[10px] border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)]">
         {previewCard ? (
@@ -1006,7 +1010,6 @@ export function DeckbuilderWorkspace({
   }
 
   function handleRenameStart(deck: DeckRecord) {
-    setSelectedDeckId(deck._id);
     setEditingDeckId(deck._id);
     setRenameValue(deck.deckName);
   }
