@@ -95,7 +95,7 @@ function LibraryCardTile({
   }
 
   const actionButtonClass =
-    "shrink-0 whitespace-nowrap text-[13px] font-semibold transition hover:text-white hover:underline hover:underline-offset-2";
+    "shrink-0 whitespace-nowrap text-[11px] font-medium leading-none transition hover:text-white hover:underline hover:underline-offset-2";
   const abilityDescription = useMemo(() => {
     if (!card.legendaryPower) {
       return null;
@@ -147,7 +147,7 @@ function LibraryCardTile({
   }, [activeGeneratedCard?.name, card.legendaryPower, card.slug, generatedCards]);
 
   return (
-    <article className="space-y-3">
+    <article className="space-y-2">
       <div className="relative aspect-275/400 overflow-hidden rounded-[18px] shadow-[0_22px_40px_rgba(0,0,0,0.42)]">
         {showingAbility ? (
           <div className="flex h-full flex-col rounded-[18px] bg-[#1c1c1c] px-5 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -174,7 +174,7 @@ function LibraryCardTile({
       </div>
 
       {hasLegendaryAbility || hasSummons ? (
-        <div className="flex items-center justify-center gap-3 overflow-x-auto text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex items-center justify-center gap-2 overflow-x-auto text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {hasLegendaryAbility ? (
             <button
               type="button"

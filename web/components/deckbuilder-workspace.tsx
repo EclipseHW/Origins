@@ -17,7 +17,6 @@ const BUILDER_KIND_OPTIONS = ["Unit", "Spell"] as const;
 const EMPTY_CARD_SLUGS: string[] = [];
 const EXTERNAL_DECK_CODE_PREFIX = "KGBLDC";
 const EXTERNAL_DECK_CODE_VERSION = "v1";
-
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
 type SavedState = "idle" | "saved";
 
@@ -30,6 +29,7 @@ type DeckDraft = {
 type DeckRecord = DeckDraft & {
   _id: string;
   userId?: string;
+  publishedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -59,6 +59,11 @@ const deleteDeckReference = makeFunctionReference<
   { deckId: string },
   void
 >("decks:remove");
+const publishDeckReference = makeFunctionReference<
+  "mutation",
+  { deckId: string },
+  void
+>("decks:publish");
 
 function toggleValue<T extends string>(items: T[], value: T): T[] {
   return items.includes(value)
@@ -96,6 +101,7 @@ function createEmptyDeck(name = ""): DeckRecord {
     deckName: name,
     legendarySlug: null,
     cardSlugs: [],
+    publishedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -392,105 +398,94 @@ function DeckListCard({
           onSelect();
         }
       }}
-      className={`group relative w-full max-w-[420px] overflow-hidden rounded-[24px] border text-left shadow-[0_18px_34px_rgba(0,0,0,0.18)] transition ${
+      className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 shadow-[0_16px_28px_rgba(0,0,0,0.18)] transition ${
         selected
-          ? "border-[#e0c15a] bg-white ring-2 ring-[#e0c15a]/25"
-          : "border-black/8 bg-white hover:-translate-y-0.5 hover:shadow-[0_22px_38px_rgba(0,0,0,0.2)]"
+          ? "border-[#e0c15a] bg-[linear-gradient(135deg,#231e12_0%,#17130d_100%)] shadow-[0_18px_30px_rgba(0,0,0,0.24),inset_0_0_0_1px_rgba(224,193,90,0.18)]"
+          : "border-[#2a2a2a] bg-[linear-gradient(135deg,#1d1f26_0%,#14161c_100%)] hover:border-[#343844]"
       }`}
       aria-label={`Open ${formatDeckName(deck.deckName)}`}
     >
-      {previewCard ? (
-        <>
-          <div className="absolute inset-y-0 left-0 w-32 overflow-hidden">
-            <Image
-              src={`/${previewCard.artPath}`}
-              alt={previewCard.name}
-              fill
-              sizes="128px"
-              className="object-cover"
-            />
-          </div>
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0.88)_24%,rgba(255,255,255,0.96)_54%,rgba(255,255,255,1)_100%)]" />
-        </>
-      ) : null}
+      <div className="relative h-[62px] w-[46px] shrink-0 overflow-hidden rounded-[10px] border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)]">
+        {previewCard ? (
+          <Image
+            src={`/${previewCard.artPath}`}
+            alt={previewCard.name}
+            fill
+            sizes="46px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),rgba(255,255,255,0)_58%),linear-gradient(180deg,#1d1d1d_0%,#121212_100%)]" />
+        )}
+      </div>
 
-      <div className="relative flex min-h-[104px] items-center justify-between gap-4 px-4 py-4 pl-28 text-black">
-        <div className="min-w-0 flex-1">
-          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-black/45">
-            {deck.legendarySlug ? "Legendary deck" : "Draft deck"}
-          </p>
-          {editing ? (
-            <input
-              type="text"
-              value={renameValue}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) => onRenameChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  onRenameSave();
-                }
-
-                if (event.key === "Escape") {
-                  onRenameCancel();
-                }
-              }}
-              placeholder="Deck name"
-              autoFocus
-              className="mt-2 w-full rounded-full border border-black/12 bg-black/4 px-3 py-2 text-sm font-semibold text-black outline-none placeholder:text-black/30 focus:border-black/20"
-            />
-          ) : (
-            <p className="truncate pt-1 text-base font-semibold text-black">
-              {formatDeckName(deck.deckName)}
-            </p>
-          )}
-          <p className="pt-1 text-sm text-black/58">
-            {previewCard ? previewCard.name : "Pick a legendary card"} ·{" "}
-            {deck.cardSlugs.length}/12 cards
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          {editing ? (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
+      <div className="min-w-0 flex-1">
+        {editing ? (
+          <input
+            type="text"
+            value={renameValue}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onRenameChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
                 onRenameSave();
-              }}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
-              aria-label={`Save ${formatDeckName(deck.deckName)}`}
-              title="Save deck name"
-            >
-              <Image src="/icons/check.png" alt="" width={18} height={18} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRenameStart();
-              }}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
-              aria-label={`Edit ${formatDeckName(deck.deckName)}`}
-              title="Edit deck name"
-            >
-              <Image src="/icons/edit.svg" alt="" width={18} height={18} />
-            </button>
-          )}
+              }
 
+              if (event.key === "Escape") {
+                onRenameCancel();
+              }
+            }}
+            placeholder="Deck name"
+            autoFocus
+            className="w-full border-none bg-transparent px-0 py-0 text-[1.08rem] font-semibold text-white outline-none placeholder:text-white/28"
+          />
+        ) : (
+          <p className="truncate text-[1.08rem] font-semibold tracking-tight text-white">
+            {formatDeckName(deck.deckName)}
+          </p>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {editing ? (
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              onDelete();
+              onRenameSave();
             }}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-red-50 transition hover:bg-red-100"
-            aria-label={`Delete ${formatDeckName(deck.deckName)}`}
-            title="Delete deck"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-84 transition hover:bg-white/6 hover:opacity-100"
+            aria-label={`Save ${formatDeckName(deck.deckName)}`}
+            title="Save deck name"
           >
-            <Image src="/icons/trash-1.png" alt="" width={18} height={18} />
+            <Image src="/icons/check.svg" alt="" width={24} height={24} />
           </button>
-        </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRenameStart();
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-84 transition hover:bg-white/6 hover:opacity-100"
+            aria-label={`Edit ${formatDeckName(deck.deckName)}`}
+            title="Edit deck name"
+          >
+            <Image src="/icons/edit.svg" alt="" width={24} height={24} />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-90 transition hover:bg-red-500/10 hover:opacity-100"
+          aria-label={`Delete ${formatDeckName(deck.deckName)}`}
+          title="Delete deck"
+        >
+          <Image src="/icons/delete.svg" alt="" width={24} height={24} />
+        </button>
       </div>
     </div>
   );
@@ -514,6 +509,7 @@ export function DeckbuilderWorkspace({
   const createDeckMutation = useMutation(createDeckReference);
   const updateDeckMutation = useMutation(updateDeckReference);
   const deleteDeckMutation = useMutation(deleteDeckReference);
+  const publishDeckMutation = useMutation(publishDeckReference);
   const cardBySlug = useMemo(
     () => Object.fromEntries(cards.map((card) => [card.slug, card])),
     [cards],
@@ -596,7 +592,6 @@ export function DeckbuilderWorkspace({
 
     return sortedDecks.find((deck) => deck._id === effectiveSelectedDeckId) ?? null;
   }, [effectiveSelectedDeckId, sortedDecks]);
-  const deckName = selectedDeck?.deckName ?? "";
   const legendarySlug = selectedDeck?.legendarySlug ?? null;
   const cardSlugs = selectedDeck?.cardSlugs ?? EMPTY_CARD_SLUGS;
   const legendaryCard = legendarySlug ? cardBySlug[legendarySlug] ?? null : null;
@@ -847,6 +842,15 @@ export function DeckbuilderWorkspace({
     }
   }
 
+  async function handlePublishDeck() {
+    if (!selectedDeck || !canUseCloudDecks) {
+      return;
+    }
+
+    await publishDeckMutation({ deckId: selectedDeck._id });
+    setSavedState("saved");
+  }
+
   function handleRandomMulligan() {
     if (fullDeck.length === 0) {
       return;
@@ -924,14 +928,9 @@ export function DeckbuilderWorkspace({
           canUseCloudDecks ? (
             <div className="space-y-3 rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                    My Decks
-                  </p>
-                  <p className="pt-1 text-sm text-white/62">
-                    Select a deck to edit cards and legendary.
-                  </p>
-                </div>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">
+                  Saved Decks
+                </h1>
                 <button
                   type="button"
                   onClick={handleCreateDeck}
@@ -976,7 +975,7 @@ export function DeckbuilderWorkspace({
           ) : cloudDecksPending ? (
             <div className="rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                My Decks
+                Saved Decks
               </p>
               <p className="pt-2 text-sm text-white/62">
                 Connecting your account to deck storage...
@@ -985,7 +984,7 @@ export function DeckbuilderWorkspace({
           ) : (
             <div className="rounded-[28px] border border-amber-400/20 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
-                My Decks
+                Saved Decks
               </p>
               <p className="pt-2 text-sm text-white/72">
                 Signed in, but Convex deck storage is not authenticated yet.
@@ -996,59 +995,6 @@ export function DeckbuilderWorkspace({
 
         {!hasClerkSession || Boolean(selectedDeck) ? (
           <>
-            {hasClerkSession ? (
-              <div className="flex items-center justify-between rounded-[20px] border border-white/10 bg-[#161616] px-4 py-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                    Deck Details
-                  </p>
-                  <p className="pt-1 text-sm text-white/62">
-                    Edit cards, save, and publish this deck.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {selectedDeck ? (
-                    <>
-                      {editingDeckId === selectedDeck._id ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleRenameSave(selectedDeck._id)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
-                          aria-label="Save deck name"
-                        >
-                          <Image src="/icons/check.png" alt="" width={18} height={18} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleRenameStart(selectedDeck)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black text-white transition hover:bg-black/88"
-                          aria-label="Edit deck name"
-                        >
-                          <Image src="/icons/edit.svg" alt="" width={18} height={18} />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteSavedDeck(selectedDeck._id)}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-red-50 transition hover:bg-red-100"
-                        aria-label="Delete deck"
-                      >
-                        <Image src="/icons/trash-1.png" alt="" width={18} height={18} />
-                      </button>
-                    </>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={handleBackToDecks}
-                    className="rounded-full border border-white/14 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-white/78 transition hover:border-white/24 hover:bg-white/5"
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
             <div className="flex items-start gap-4">
           <div className="w-full max-w-[160px] shrink-0">
             <DeckFrame
@@ -1063,64 +1009,41 @@ export function DeckbuilderWorkspace({
             />
           </div>
 
-          {hasClerkSession ? (
-            <div className="mt-2 flex-1 rounded-[24px] border border-white/10 bg-[#1c1c1c] px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                Editing Deck
-              </p>
-              {editingDeckId === selectedDeck?._id && selectedDeck ? (
-                <input
-                  type="text"
-                  value={renameValue}
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      void handleRenameSave(selectedDeck._id);
-                    }
-
-                    if (event.key === "Escape") {
-                      setEditingDeckId(null);
-                      setRenameValue(selectedDeck.deckName);
-                    }
-                  }}
-                  className="mt-3 w-full rounded-full border border-white/14 bg-[#202020] px-4 py-3 text-sm font-semibold text-white outline-none placeholder:text-white/32 focus:border-white/24"
-                  autoFocus
-                />
-              ) : (
-                <p className="pt-2 text-xl font-semibold text-white">
-                  {formatDeckName(deckName)}
-                </p>
-              )}
-              <p className="pt-1 text-sm text-white/62">
-                {legendaryCard ? legendaryCard.name : "Choose a legendary card"} ·{" "}
-                {cardSlugs.length}/12 cards
-              </p>
-            </div>
-          ) : (
             <div className="mt-2 flex-1 space-y-3">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                {hasClerkSession ? (
+                  <button
+                    type="button"
+                    onClick={handleBackToDecks}
+                    className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
+                    aria-label="Back to saved decks"
+                    title="Back"
+                  >
+                    <Image src="/icons/back.svg" alt="" width={20} height={20} />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void handleCopyDeckCode()}
-                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
                   aria-label="Copy deck code"
                   title="Copy deck code"
                 >
                   <Image
-                    src={copyFeedback ? "/icons/check.png" : "/icons/export.png"}
+                    src={copyFeedback ? "/icons/check.svg" : "/icons/export.svg"}
                     alt=""
-                    width={20}
-                    height={20}
+                    width={24}
+                    height={24}
                   />
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleImportDeckCode()}
-                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
                   aria-label="Import deck code"
                   title="Import deck code"
                 >
-                  <Image src="/icons/import.png" alt="" width={20} height={20} />
+                  <Image src="/icons/import.svg" alt="" width={24} height={24} />
                 </button>
                 <button
                   type="button"
@@ -1129,31 +1052,53 @@ export function DeckbuilderWorkspace({
                       void handleDeleteSavedDeck(selectedDeck._id);
                     }
                   }}
-                  className="inline-flex h-8 w-8 items-center justify-center bg-transparent transition hover:opacity-85"
+                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
                   aria-label="Delete deck"
                   title="Delete deck"
                 >
-                  <Image src="/icons/trash-1.png" alt="" width={20} height={20} />
+                  <Image src="/icons/delete.svg" alt="" width={20} height={20} />
                 </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <SignInButton mode="modal">
-                  <button
-                    type="button"
-                    className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90"
-                  >
-                    Login to Save
-                  </button>
-                </SignInButton>
-                <SignInButton mode="modal">
-                  <button
-                    type="button"
-                    className="rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525]"
-                  >
-                    Login to Publish
-                  </button>
-                </SignInButton>
+                <div className="min-w-0 flex-1">
+                  {hasClerkSession ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveDraft()}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-full bg-white px-3 text-sm font-semibold text-black transition hover:bg-white/90"
+                    >
+                      {savedState === "saved" ? "Saved" : "Save"}
+                    </button>
+                  ) : (
+                    <SignInButton mode="modal">
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-full items-center justify-center rounded-full bg-white px-3 text-sm font-semibold text-black transition hover:bg-white/90"
+                      >
+                        Save
+                      </button>
+                    </SignInButton>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  {hasClerkSession ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePublishDeck()}
+                      disabled={!canUseCloudDecks}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-full border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
+                    >
+                      {selectedDeck?.publishedAt ? "Published" : "Publish"}
+                    </button>
+                  ) : (
+                    <SignInButton mode="modal">
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-full items-center justify-center rounded-full border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525]"
+                      >
+                        Publish
+                      </button>
+                    </SignInButton>
+                  )}
+                </div>
               </div>
 
               <div className="relative">
@@ -1219,95 +1164,7 @@ export function DeckbuilderWorkspace({
                 ) : null}
               </div>
             </div>
-          )}
             </div>
-
-            {hasClerkSession ? (
-            <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-              <>
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90"
-                >
-                  {savedState === "saved" ? "Saved" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="Publishing is not wired up yet."
-                  className="rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white/45 transition disabled:cursor-not-allowed"
-                >
-                  Publish
-                </button>
-              </>
-          </div>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={handleRandomMulligan}
-              disabled={fullDeck.length === 0}
-              className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
-            >
-              Generate Mulligan
-            </button>
-
-            {mulliganOpen ? (
-              <div className="absolute left-0 top-[calc(100%+0.75rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                      Opening Hand
-                    </p>
-                    <p className="text-sm text-white/64">
-                      {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRandomMulligan}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
-                      aria-label="Refresh mulligan hand"
-                    >
-                      ↻
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMulliganOpen(false)}
-                      className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
-                      aria-label="Close mulligan preview"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {mulliganCards.map((card, index) => (
-                    <div
-                      key={`${card.slug}-${index}`}
-                      className="overflow-hidden rounded-[14px] border border-white/10 bg-[#202020]"
-                    >
-                      <div className="relative aspect-275/400 overflow-hidden">
-                        <Image
-                          src={`/${card.artPath}`}
-                          alt={card.name}
-                          fill
-                          sizes="120px"
-                          className="object-cover"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-            </div>
-            ) : null}
 
             <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 12 }, (_, index) => {
@@ -1331,10 +1188,6 @@ export function DeckbuilderWorkspace({
           })}
             </div>
           </>
-        ) : hasClerkSession ? (
-          <div className="rounded-[28px] border border-white/10 bg-[#161616] px-4 py-5 text-sm text-white/58 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
-            Click a deck to enter the edit view and modify cards, save, or publish.
-          </div>
         ) : null}
       </aside>
 
@@ -1354,7 +1207,7 @@ export function DeckbuilderWorkspace({
                   <button
                     type="button"
                     onClick={resetFilters}
-                    className="rounded-full border border-white/10 bg-[#202020] px-4 py-2 text-[0.7rem] font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
+                    className="rounded-full border border-white/10 bg-[#202020] px-4 py-2 text-[0.8rem] font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
                   >
                     Reset
                   </button>
@@ -1468,7 +1321,7 @@ export function DeckbuilderWorkspace({
                                 toggleValue(current, keyword),
                               )
                             }
-                            className="w-full whitespace-nowrap py-[8px]! px-3 text-center text-[0.8rem] leading-none"
+                            className="w-full whitespace-nowrap py-[8px]! px-3 text-center text-[0.7rem] leading-none"
                           />
                         ))}
                       </div>

@@ -15,24 +15,6 @@ function normalizeName(value) {
     .trim();
 }
 
-const aliasByNormalizedName = {
-  "firebird": "The Firebird",
-  "rabbit": "White Rabbit",
-  "jack in the bar": "Jack-in-the-Box",
-  "mad hater": "Mad Hatter",
-  "hunstman": "Huntsman",
-  "sould surge": "Soul Surge",
-  "the woodman": "Tin Woodman",
-  "alladin": "Aladdin",
-  "bid bad wolf": "Big Bad Wolf",
-  "fairt godmather": "Fairy Godmother",
-  "sheriff of nottengham": "Sheriff of Nottingham",
-  "shielded maiden": "Shield Maiden",
-  "queen guinvere": "Queen Guinevere",
-  "three muskeeters": "Three Musketeers",
-  "kings arthur": "King Arthur",
-};
-
 function decodeExternalCode(deckCode) {
   const [payload] = deckCode.trim().split(":");
   if (!payload || !payload.startsWith(EXTERNAL_DECK_CODE_PREFIX)) {

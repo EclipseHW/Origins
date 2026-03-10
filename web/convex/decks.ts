@@ -40,6 +40,7 @@ export const create = mutation({
       deckName: args.deckName,
       legendarySlug: null,
       cardSlugs: [],
+      publishedAt: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -85,5 +86,26 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.deckId);
+  },
+});
+
+export const publish = mutation({
+  args: {
+    deckId: v.id("decks"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const deck = await ctx.db.get(args.deckId);
+
+    if (!deck || deck.userId !== userId) {
+      throw new Error("Deck not found");
+    }
+
+    const timestamp = Date.now();
+
+    await ctx.db.patch(args.deckId, {
+      publishedAt: timestamp,
+      updatedAt: timestamp,
+    });
   },
 });
