@@ -12,11 +12,27 @@ import {
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeckCache } from "@/components/deck-cache-provider";
 import { Slider } from "@/components/ui/slider";
 import type { CardDefinition } from "@/lib/cards";
-import type { DeckDraft, DeckRecord } from "@/lib/deck-types";
+import {
+  decodeExternalDeckCode,
+  decodeLocalDeckCode,
+  encodeExternalDeckCode,
+  encodeLocalDeckCode,
+  type PortableDeckState,
+} from "@/lib/deck-code";
+import {
+  DECK_ARCHETYPE_OPTIONS,
+  type DeckArchetype,
+} from "@/lib/deck-archetypes";
+import {
+  normalizeDeckRecord,
+  type DeckDraft,
+  type DeckRecord,
+} from "@/lib/deck-types";
 import {
   ALIGNMENT_OPTIONS,
   KEYWORD_OPTIONS,
@@ -25,8 +41,6 @@ import {
 
 const BUILDER_KIND_OPTIONS = ["Unit", "Spell"] as const;
 const EMPTY_CARD_SLUGS: string[] = [];
-const EXTERNAL_DECK_CODE_PREFIX = "KGBLDC";
-const EXTERNAL_DECK_CODE_VERSION = "v1";
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
 type SavedState = "idle" | "saved";
 
@@ -58,14 +72,15 @@ const createDeckReference = makeFunctionReference<
   string
 >("decks:create");
 const updateDeckReference = makeFunctionReference<
-  "mutation",
-  {
-    deckId: string;
-    deckName: string;
-    legendarySlug: string | null;
-    cardSlugs: string[];
-  },
-  void
+	"mutation",
+	{
+	  deckId: string;
+	  deckName: string;
+	  legendarySlug: string | null;
+	  cardSlugs: string[];
+      archetype: DeckArchetype | null;
+	},
+	void
 >("decks:update");
 const deleteDeckReference = makeFunctionReference<
   "mutation",
@@ -114,6 +129,9 @@ function createEmptyDeck(name = ""): DeckRecord {
     deckName: name,
     legendarySlug: null,
     cardSlugs: [],
+    archetype: null,
+    publisherName: null,
+    publisherUsername: null,
     publishedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -125,6 +143,7 @@ function toDeckDraft(deck: DeckDraft): DeckDraft {
     deckName: deck.deckName,
     legendarySlug: deck.legendarySlug,
     cardSlugs: [...deck.cardSlugs],
+    archetype: deck.archetype,
   };
 }
 
@@ -132,6 +151,7 @@ function deckDraftsMatch(left: DeckDraft, right: DeckDraft): boolean {
   return (
     left.deckName === right.deckName &&
     left.legendarySlug === right.legendarySlug &&
+    left.archetype === right.archetype &&
     left.cardSlugs.length === right.cardSlugs.length &&
     left.cardSlugs.every((slug, index) => slug === right.cardSlugs[index])
   );
@@ -158,112 +178,17 @@ function drawRandomHand(deck: string[], handSize: number): string[] {
   return pool.slice(0, Math.min(handSize, pool.length));
 }
 
-type ImportedDeckState = {
-  legendarySlug: string | null;
-  cardSlugs: string[];
-};
-
-function encodeLocalDeckCode(deck: ImportedDeckState): string {
-  const payload = JSON.stringify(deck);
-  return `OB1:${btoa(payload)}`;
-}
-
-async function computeExternalDeckCodeChecksum(payload: string): Promise<string> {
-  const bytes = new TextEncoder().encode(payload);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 8);
-}
-
-async function encodeExternalDeckCode(
-  deck: ImportedDeckState,
-  cardBySlug: Record<string, CardDefinition>,
-): Promise<string | null> {
-  const slugs = [deck.legendarySlug, ...deck.cardSlugs].filter(
-    (slug): slug is string => typeof slug === "string" && slug.length > 0,
+function sanitizeImportedDeck(deck: PortableDeckState): PortableDeckState {
+  const uniqueCardSlugs = deck.cardSlugs.filter(
+    (slug, index, items) => items.indexOf(slug) === index,
   );
-  const externalIds: string[] = [];
 
-  for (const slug of slugs) {
-    const externalCodeId = cardBySlug[slug]?.externalCodeId;
-    if (!externalCodeId) {
-      return null;
-    }
-
-    externalIds.push(externalCodeId);
-  }
-
-  const payloadText = [...externalIds].sort((left, right) => left.localeCompare(right)).join("|");
-  const decodedPayload = `${EXTERNAL_DECK_CODE_VERSION}|${payloadText}`;
-  const payload = `${EXTERNAL_DECK_CODE_PREFIX}${btoa(decodedPayload)}`;
-  const checksum = await computeExternalDeckCodeChecksum(decodedPayload);
-
-  return `${payload}:${checksum}`;
-}
-
-function decodeLocalDeckCode(code: string): ImportedDeckState | null {
-  if (!code.startsWith("OB1:")) {
-    return null;
-  }
-
-  try {
-    const decoded = atob(code.slice(4));
-    const parsed = JSON.parse(decoded) as Partial<ImportedDeckState>;
-
-    return {
-      legendarySlug:
-        typeof parsed.legendarySlug === "string" ? parsed.legendarySlug : null,
-      cardSlugs: Array.isArray(parsed.cardSlugs)
-        ? parsed.cardSlugs.filter((slug): slug is string => typeof slug === "string")
-        : [],
-    };
-  } catch {
-    return null;
-  }
-}
-
-function decodeExternalDeckCode(
-  code: string,
-  cardByExternalId: Record<string, CardDefinition>,
-): ImportedDeckState | null {
-  const [payload] = code.trim().split(":");
-  if (!payload || !payload.startsWith(EXTERNAL_DECK_CODE_PREFIX)) {
-    return null;
-  }
-
-  try {
-    const decoded = atob(payload.slice(EXTERNAL_DECK_CODE_PREFIX.length));
-    const [version, ...entries] = decoded.split("|").filter(Boolean);
-    if (version !== EXTERNAL_DECK_CODE_VERSION) {
-      return null;
-    }
-
-    let legendarySlug: string | null = null;
-    const cardSlugs: string[] = [];
-
-    for (const entry of entries) {
-      const card = cardByExternalId[entry];
-      if (!card) {
-        return null;
-      }
-
-      if (entry.endsWith("_MC")) {
-        legendarySlug = card.slug;
-        continue;
-      }
-
-      cardSlugs.push(card.slug);
-    }
-
-    return {
-      legendarySlug,
-      cardSlugs,
-    };
-  } catch {
-    return null;
-  }
+  return {
+    deckName: deck.deckName,
+    legendarySlug: deck.legendarySlug,
+    cardSlugs: uniqueCardSlugs.slice(0, 12),
+    archetype: deck.archetype,
+  };
 }
 
 function FilterChip({
@@ -527,6 +452,8 @@ export function DeckbuilderWorkspace({
 }: {
   cards: CardDefinition[];
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoaded, isSignedIn, user } = useUser();
   const { isLoading: convexAuthLoading, isAuthenticated: convexAuthenticated } =
     useConvexAuth();
@@ -589,13 +516,14 @@ export function DeckbuilderWorkspace({
   >({});
   const optimisticDecksRef = useRef<Record<string, OptimisticDeck>>({});
   const savedDecksRef = useRef<DeckRecord[]>([]);
-  const cloudSaveTimersRef = useRef<Record<string, number>>({});
-  const pendingCloudSavesRef = useRef<Record<string, DeckDraft>>({});
-  const pendingCloudSaveStateRef = useRef<
-    Partial<Record<string, SavedState>>
-  >({});
-  const inFlightCloudSavesRef = useRef<Record<string, boolean>>({});
-  const cloudSaveWaitersRef = useRef<Record<string, Array<() => void>>>({});
+	  const cloudSaveTimersRef = useRef<Record<string, number>>({});
+	  const pendingCloudSavesRef = useRef<Record<string, DeckDraft>>({});
+	  const pendingCloudSaveStateRef = useRef<
+	    Partial<Record<string, SavedState>>
+	  >({});
+	  const inFlightCloudSavesRef = useRef<Record<string, boolean>>({});
+	  const cloudSaveWaitersRef = useRef<Record<string, Array<() => void>>>({});
+      const importedDeckCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (savedState !== "saved") {
@@ -619,13 +547,16 @@ export function DeckbuilderWorkspace({
     optimisticDecksRef.current = optimisticDecks;
   }, [optimisticDecks]);
 
-  useEffect(() => {
-    if (!canUseCloudDecks || !currentUserId || signedInDecks === undefined) {
-      return;
-    }
+	  useEffect(() => {
+	    if (!canUseCloudDecks || !currentUserId || signedInDecks === undefined) {
+	      return;
+	    }
 
-    setCachedDecks(currentUserId, signedInDecks);
-  }, [canUseCloudDecks, currentUserId, setCachedDecks, signedInDecks]);
+	    setCachedDecks(
+	      currentUserId,
+	      signedInDecks.map((deck) => normalizeDeckRecord(deck)),
+	    );
+	  }, [canUseCloudDecks, currentUserId, setCachedDecks, signedInDecks]);
 
   const savedDecks = useMemo(() => {
     if (isSignedOut) {
@@ -640,12 +571,15 @@ export function DeckbuilderWorkspace({
       return [];
     }
 
-    return (hydratedSignedInDecks ?? []).map((deck) => {
-      const optimisticDeck = optimisticDecks[deck._id];
+	    return (hydratedSignedInDecks ?? []).map((deck) => {
+	      const baseDeck = normalizeDeckRecord(deck);
+	      const optimisticDeck = optimisticDecks[deck._id];
 
-      return optimisticDeck ? { ...deck, ...optimisticDeck } : deck;
-    });
-  }, [canUseCloudDecks, guestDecks, hasClerkSession, hydratedSignedInDecks, isSignedOut, optimisticDecks]);
+	      return optimisticDeck
+	        ? normalizeDeckRecord({ ...baseDeck, ...optimisticDeck })
+	        : baseDeck;
+	    });
+	  }, [canUseCloudDecks, guestDecks, hasClerkSession, hydratedSignedInDecks, isSignedOut, optimisticDecks]);
 
   useEffect(() => {
     savedDecksRef.current = savedDecks;
@@ -673,11 +607,11 @@ export function DeckbuilderWorkspace({
       const next = { ...current };
 
       for (const [deckId, optimisticDeck] of Object.entries(current)) {
-        const serverDeck = signedInDecks.find((deck) => deck._id === deckId);
-        if (!serverDeck || deckDraftsMatch(serverDeck, optimisticDeck)) {
-          delete next[deckId];
-          changed = true;
-        }
+	        const serverDeck = signedInDecks.find((deck) => deck._id === deckId);
+	        if (!serverDeck || deckDraftsMatch(serverDeck, optimisticDeck)) {
+	          delete next[deckId];
+	          changed = true;
+	        }
       }
 
       if (!changed) {
@@ -740,9 +674,82 @@ export function DeckbuilderWorkspace({
 
     return nextDeck;
   }, [cardBySlug, cardSlugs, legendarySlug]);
-  const mulliganCards = mulliganHand
-    .map((slug) => cardBySlug[slug])
-    .filter((card): card is CardDefinition => Boolean(card));
+	  const mulliganCards = mulliganHand
+	    .map((slug) => cardBySlug[slug])
+	    .filter((card): card is CardDefinition => Boolean(card));
+
+      useEffect(() => {
+        const deckCode = searchParams.get("deck");
+        if (!deckCode || importedDeckCodeRef.current === deckCode) {
+          return;
+        }
+
+        const importedDeck =
+          decodeLocalDeckCode(deckCode) ??
+          decodeExternalDeckCode(deckCode, cardByExternalId);
+
+        if (!importedDeck) {
+          importedDeckCodeRef.current = deckCode;
+          router.replace("/deckbuilder");
+          return;
+        }
+
+        const sanitizedDeck = sanitizeImportedDeck(importedDeck);
+
+        if (hasClerkSession && !canUseCloudDecks) {
+          return;
+        }
+
+        importedDeckCodeRef.current = deckCode;
+
+        const applyImportedDeck = async () => {
+          if (canUseCloudDecks) {
+            const nextDeckId = await createDeckMutation({
+              deckName: sanitizedDeck.deckName,
+            });
+
+            await updateDeckMutation({
+              deckId: nextDeckId,
+              deckName: sanitizedDeck.deckName,
+              legendarySlug: sanitizedDeck.legendarySlug,
+              cardSlugs: sanitizedDeck.cardSlugs,
+              archetype: sanitizedDeck.archetype,
+            });
+
+            setSelectedDeckId(nextDeckId);
+            setEditingDeckId(null);
+            setRenameValue(sanitizedDeck.deckName);
+          } else if (!hasClerkSession) {
+            const nextDeck = normalizeDeckRecord({
+              ...createEmptyDeck(sanitizedDeck.deckName),
+              deckName: sanitizedDeck.deckName,
+              legendarySlug: sanitizedDeck.legendarySlug,
+              cardSlugs: sanitizedDeck.cardSlugs,
+              archetype: sanitizedDeck.archetype,
+            });
+
+            setGuestDecks((current) => [nextDeck, ...current]);
+            setSelectedDeckId(nextDeck._id);
+            setEditingDeckId(null);
+            setRenameValue(nextDeck.deckName);
+          }
+
+          setSavedState("idle");
+          setMulliganHand([]);
+          setMulliganOpen(false);
+          router.replace("/deckbuilder");
+        };
+
+        void applyImportedDeck();
+      }, [
+        cardByExternalId,
+        canUseCloudDecks,
+        createDeckMutation,
+        hasClerkSession,
+        router,
+        searchParams,
+        updateDeckMutation,
+      ]);
 
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -906,13 +913,14 @@ export function DeckbuilderWorkspace({
     delete pendingCloudSaveStateRef.current[deckId];
     inFlightCloudSavesRef.current[deckId] = true;
 
-    try {
-      await updateDeckMutation({
-        deckId,
-        deckName: draft.deckName,
-        legendarySlug: draft.legendarySlug,
-        cardSlugs: draft.cardSlugs,
-      });
+	    try {
+	      await updateDeckMutation({
+	        deckId,
+	        deckName: draft.deckName,
+	        legendarySlug: draft.legendarySlug,
+	        cardSlugs: draft.cardSlugs,
+            archetype: draft.archetype,
+	      });
 
       if (nextSavedState) {
         setSavedState(nextSavedState);
@@ -1160,10 +1168,12 @@ export function DeckbuilderWorkspace({
       return;
     }
 
-    const localCode = encodeLocalDeckCode({
-      legendarySlug: selectedDeck.legendarySlug,
-      cardSlugs: selectedDeck.cardSlugs,
-    });
+	    const localCode = encodeLocalDeckCode({
+          deckName: selectedDeck.deckName,
+	      legendarySlug: selectedDeck.legendarySlug,
+	      cardSlugs: selectedDeck.cardSlugs,
+          archetype: selectedDeck.archetype,
+	    });
 
     try {
       await navigator.clipboard.writeText(code);
@@ -1192,16 +1202,19 @@ export function DeckbuilderWorkspace({
       return;
     }
 
-    const uniqueCardSlugs = importedDeck.cardSlugs.filter(
-      (slug, index, items) => items.indexOf(slug) === index,
-    );
+        const sanitizedDeck = sanitizeImportedDeck(importedDeck);
 
-    await updateSelectedDeck((deck) => ({
-      ...deck,
-      legendarySlug: importedDeck.legendarySlug,
-      cardSlugs: uniqueCardSlugs.slice(0, 12),
-    }));
-  }
+	    await updateSelectedDeck((deck) => ({
+	      ...deck,
+	      deckName:
+            sanitizedDeck.deckName.trim().length > 0
+              ? sanitizedDeck.deckName
+              : deck.deckName,
+          legendarySlug: sanitizedDeck.legendarySlug,
+          cardSlugs: sanitizedDeck.cardSlugs,
+          archetype: sanitizedDeck.archetype,
+	    }));
+	  }
 
   return (
     <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
@@ -1378,15 +1391,15 @@ export function DeckbuilderWorkspace({
                 </div>
               </div>
 
-              <div className="relative">
-		                <button
-		                  type="button"
-		                  onClick={handleRandomMulligan}
+	              <div className="relative">
+			                <button
+			                  type="button"
+			                  onClick={handleRandomMulligan}
 		                  disabled={fullDeck.length === 0}
 		                  className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
 		                >
-                  Generate Mulligan
-                </button>
+		                  Simulate Hand
+	                </button>
 
                 {mulliganOpen ? (
                   <div className="absolute left-0 top-[calc(100%+0.75rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
@@ -1437,11 +1450,40 @@ export function DeckbuilderWorkspace({
                         </div>
                       ))}
                     </div>
+	                  </div>
+	                ) : null}
+	              </div>
+
+                  <div className="grid gap-3">
+                    <label className="space-y-2">
+                      <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-white/42">
+                        Archetype
+                      </span>
+                      <select
+                        value={selectedDeck?.archetype ?? ""}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          void updateSelectedDeck((deck) => ({
+                            ...deck,
+                            archetype:
+                              nextValue.length > 0
+                                ? (nextValue as DeckArchetype)
+                                : null,
+                          }));
+                        }}
+                        className="h-10 w-full rounded-[14px] border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white outline-none transition hover:border-white/24 focus:border-white/28"
+                      >
+                        <option value="">Unassigned</option>
+                        {DECK_ARCHETYPE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                ) : null}
-              </div>
-            </div>
-            </div>
+	            </div>
+	            </div>
 
             <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 12 }, (_, index) => {

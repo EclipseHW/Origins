@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Nunito_Sans } from "next/font/google";
+import { Nunito_Sans, Geist } from "next/font/google";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { DeckCacheProvider } from "@/components/deck-cache-provider";
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const nunitoSans = Nunito_Sans({
   variable: "--font-site",
@@ -23,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className={`${nunitoSans.variable} h-screen overflow-hidden antialiased`}>
         <ClerkProvider>
           <ConvexClientProvider>

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { DeckRecord } from "@/lib/deck-types";
+import { normalizeDeckRecord, type DeckRecord } from "@/lib/deck-types";
 
 type DeckCacheContextValue = {
   decksByUserId: Record<string, DeckRecord[]>;
@@ -18,10 +18,7 @@ type DeckCacheContextValue = {
 const DeckCacheContext = createContext<DeckCacheContextValue | null>(null);
 
 function cloneDeck(deck: DeckRecord): DeckRecord {
-  return {
-    ...deck,
-    cardSlugs: [...deck.cardSlugs],
-  };
+  return normalizeDeckRecord(deck);
 }
 
 function decksMatch(left: DeckRecord[], right: DeckRecord[]) {
@@ -34,6 +31,9 @@ function decksMatch(left: DeckRecord[], right: DeckRecord[]) {
         leftDeck._id === rightDeck?._id &&
         leftDeck.deckName === rightDeck.deckName &&
         leftDeck.legendarySlug === rightDeck.legendarySlug &&
+        leftDeck.archetype === rightDeck?.archetype &&
+        leftDeck.publisherName === rightDeck?.publisherName &&
+        leftDeck.publisherUsername === rightDeck?.publisherUsername &&
         leftDeck.publishedAt === rightDeck.publishedAt &&
         leftDeck.createdAt === rightDeck.createdAt &&
         leftDeck.updatedAt === rightDeck.updatedAt &&

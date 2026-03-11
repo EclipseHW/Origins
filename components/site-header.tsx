@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,9 +16,23 @@ const tabs = [
   { href: "/decks", label: "Decks" },
 ] as const;
 
+function capitalizeFirstLetter(value: string) {
+  if (value.length === 0) {
+    return value;
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function SiteHeader() {
   const pathname = usePathname();
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const displayName =
+    (user?.username ? capitalizeFirstLetter(user.username) : null) ??
+    user?.fullName ??
+    user?.firstName ??
+    user?.primaryEmailAddress?.emailAddress ??
+    "Account";
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/5 backdrop-blur-2xl">
@@ -25,9 +40,17 @@ export function SiteHeader() {
         <div className="flex items-center gap-8">
           <Link
             href="/library"
-            className="text-xl font-bold tracking-[0.08em] text-white"
+            className="flex items-center gap-2 text-xl font-bold tracking-[0.08em] text-white"
           >
-            Origins Base
+            <Image
+              src="/icons/Origins_Icon_Logo_Colored.png"
+              alt=""
+              aria-hidden="true"
+              width={32}
+              height={32}
+              className="h-8 w-8 shrink-0"
+            />
+            <span>rigins Base</span>
           </Link>
 
           <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:flex">
@@ -53,7 +76,12 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-3">
           {!isLoaded ? null : isSignedIn ? (
-            <UserButton />
+            <>
+              <span className="max-w-40 truncate rounded-full border border-white/10 bg-[#202020] px-3 py-1.5 text-sm font-medium text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                {displayName}
+              </span>
+              <UserButton />
+            </>
           ) : (
             <>
               <SignInButton mode="modal">
