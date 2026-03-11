@@ -30,6 +30,19 @@ const EXTERNAL_DECK_CODE_VERSION = "v1";
 type BuilderKind = (typeof BUILDER_KIND_OPTIONS)[number];
 type SavedState = "idle" | "saved";
 
+const iconActionButtonBaseClass =
+  "inline-flex items-center justify-center rounded-full bg-transparent text-white/82 opacity-84 transition-[background-color,color,opacity,transform] duration-150 hover:bg-white/10 hover:text-white hover:opacity-100 focus-visible:bg-white/10 focus-visible:text-white focus-visible:opacity-100 focus-visible:outline-none";
+const iconDeleteButtonBaseClass =
+  "inline-flex items-center justify-center rounded-full bg-transparent text-red-300 opacity-90 transition-[background-color,color,opacity,transform] duration-150 hover:bg-red-500/14 hover:text-red-200 hover:opacity-100 focus-visible:bg-red-500/14 focus-visible:text-red-200 focus-visible:opacity-100 focus-visible:outline-none";
+const savedDeckActionButtonClass =
+  `${iconActionButtonBaseClass} h-8 w-8`;
+const savedDeckDeleteButtonClass =
+  `${iconDeleteButtonBaseClass} h-8 w-8`;
+const deckViewActionButtonClass =
+  `${iconActionButtonBaseClass} h-9 w-9 shrink-0 self-center`;
+const deckViewDeleteButtonClass =
+  `${iconDeleteButtonBaseClass} h-9 w-9 shrink-0 self-center`;
+
 type OptimisticDeck = DeckDraft & {
   updatedAt: number;
 };
@@ -426,7 +439,7 @@ function DeckListCard({
       }`}
       aria-label={editing ? undefined : `Open ${formatDeckName(deck.deckName)}`}
     >
-      <div className="relative h-[62px] w-[46px] shrink-0 overflow-hidden rounded-[10px] border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)]">
+	      <div className="relative h-[62px] w-[46px] shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)]">
         {previewCard ? (
           <Image
             src={`/${previewCard.artPath}`}
@@ -475,9 +488,8 @@ function DeckListCard({
               event.stopPropagation();
               onRenameSave();
             }}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-84 transition hover:bg-white/6 hover:opacity-100"
+            className={savedDeckActionButtonClass}
             aria-label={`Save ${formatDeckName(deck.deckName)}`}
-            title="Save deck name"
           >
             <Check size={18} strokeWidth={2.2} color="#34d399" />
           </button>
@@ -488,9 +500,8 @@ function DeckListCard({
               event.stopPropagation();
               onRenameStart();
             }}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-84 transition hover:bg-white/6 hover:opacity-100"
+            className={savedDeckActionButtonClass}
             aria-label={`Edit ${formatDeckName(deck.deckName)}`}
-            title="Edit deck name"
           >
             <Pencil size={18} strokeWidth={2.2} />
           </button>
@@ -501,9 +512,8 @@ function DeckListCard({
             event.stopPropagation();
             onDelete();
           }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent opacity-90 transition hover:bg-red-500/10 hover:opacity-100"
+          className={savedDeckDeleteButtonClass}
           aria-label={`Delete ${formatDeckName(deck.deckName)}`}
-          title="Delete deck"
         >
           <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
         </button>
@@ -1280,53 +1290,51 @@ export function DeckbuilderWorkspace({
           </div>
 
             <div className="mt-2 flex-1 space-y-3">
-              <div className="flex items-center gap-3">
-                {hasClerkSession ? (
+              <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1">
+                  {hasClerkSession ? (
+                    <button
+                      type="button"
+                      onClick={handleBackToDecks}
+                      className={deckViewActionButtonClass}
+                      aria-label="Back to saved decks"
+                    >
+                      <ArrowLeft size={18} strokeWidth={2.2} />
+                    </button>
+                  ) : null}
+	                  <button
+	                    type="button"
+	                    onClick={() => void handleCopyDeckCode()}
+	                    className={deckViewActionButtonClass}
+	                    aria-label="Copy deck code"
+	                  >
+	                    {copyFeedback ? (
+	                      <Check size={18} strokeWidth={2.2} color="#34d399" />
+	                    ) : (
+	                      <Copy size={18} strokeWidth={2.2} />
+	                    )}
+	                  </button>
+	                  <button
+	                    type="button"
+	                    onClick={() => void handleImportDeckCode()}
+	                    className={deckViewActionButtonClass}
+	                    aria-label="Import deck code"
+	                  >
+	                    <Download size={18} strokeWidth={2.2} />
+	                  </button>
                   <button
                     type="button"
-                    onClick={handleBackToDecks}
-                    className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
-                    aria-label="Back to saved decks"
-                    title="Back"
+                    onClick={() => {
+                      if (selectedDeck) {
+                        void handleDeleteSavedDeck(selectedDeck._id);
+                      }
+                    }}
+                    className={deckViewDeleteButtonClass}
+                    aria-label="Delete deck"
                   >
-                    <ArrowLeft size={18} strokeWidth={2.2} />
+                    <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void handleCopyDeckCode()}
-                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
-                  aria-label="Copy deck code"
-                  title="Copy deck code"
-                >
-                  {copyFeedback ? (
-                    <Check size={20} strokeWidth={2.2} color="#34d399" />
-                  ) : (
-                    <Copy size={20} strokeWidth={2.2} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleImportDeckCode()}
-                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
-                  aria-label="Import deck code"
-                  title="Import deck code"
-                >
-                  <Download size={20} strokeWidth={2.2} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedDeck) {
-                      void handleDeleteSavedDeck(selectedDeck._id);
-                    }
-                  }}
-                  className="inline-flex h-10 w-6 shrink-0 items-center justify-center self-center bg-transparent opacity-80 transition hover:opacity-100"
-                  aria-label="Delete deck"
-                  title="Delete deck"
-                >
-                  <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
-                </button>
+                </div>
                 <div className="min-w-0 flex-1">
                   {hasClerkSession ? (
                     <button
@@ -1371,12 +1379,12 @@ export function DeckbuilderWorkspace({
               </div>
 
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={handleRandomMulligan}
-                  disabled={fullDeck.length === 0}
-                  className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
-                >
+		                <button
+		                  type="button"
+		                  onClick={handleRandomMulligan}
+		                  disabled={fullDeck.length === 0}
+		                  className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
+		                >
                   Generate Mulligan
                 </button>
 
@@ -1413,10 +1421,10 @@ export function DeckbuilderWorkspace({
 
                     <div className="grid grid-cols-3 gap-2">
                       {mulliganCards.map((card, index) => (
-                        <div
-                          key={`${card.slug}-${index}`}
-                          className="overflow-hidden rounded-[14px] border border-white/10 bg-[#202020]"
-                        >
+	                        <div
+	                          key={`${card.slug}-${index}`}
+	                          className="overflow-hidden rounded-none border border-white/10 bg-[#202020]"
+	                        >
                           <div className="relative aspect-275/400 overflow-hidden">
                             <Image
                               src={`/${card.artPath}`}

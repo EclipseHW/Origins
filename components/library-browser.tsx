@@ -95,7 +95,7 @@ function LibraryCardTile({
   }
 
   const actionButtonClass =
-    "shrink-0 whitespace-nowrap text-[11px] font-medium leading-none transition hover:text-white hover:underline hover:underline-offset-2";
+    "shrink-0 whitespace-nowrap text-[13px] font-medium leading-none transition hover:text-white hover:underline hover:underline-offset-2";
   const abilityDescription = useMemo(() => {
     if (!card.legendaryPower) {
       return null;
@@ -180,7 +180,7 @@ function LibraryCardTile({
               type="button"
               onClick={toggleAbility}
               className={`${actionButtonClass} ${
-                showingAbility ? "text-white underline underline-offset-2" : "text-white/72"
+                showingAbility ? "text-white underline underline-offset-2" : "text-white/80"
               }`}
             >
               Ability
@@ -195,7 +195,7 @@ function LibraryCardTile({
                 className={`${actionButtonClass} ${
                   activeGeneratedCard?.name === generatedCard.name
                     ? "text-white underline underline-offset-2"
-                    : "text-white/72"
+                    : "text-white/80"
                 }`}
               >
                 {generatedCard.name}
