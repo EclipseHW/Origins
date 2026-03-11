@@ -391,20 +391,11 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
               placeholder="Search cards by effects or keywords..."
               className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
             />
-            <div className="flex items-center gap-2">
-              {filtersOpen ? (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="rounded-full border border-white/10 bg-[#202020] px-4 py-2 text-sm font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
-                >
-                  Reset
-                </button>
-              ) : null}
+            <div className="flex items-center">
               <button
                 type="button"
                 onClick={() => setFiltersOpen((open) => !open)}
-                className="rounded-full border border-white/14 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
+                className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
               >
                 Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
               </button>
@@ -413,6 +404,18 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
 
           {filtersOpen ? (
             <div className="border-t border-white/10 bg-[#1c1c1c] px-4 pb-3.5 pt-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                  Filter Cards
+                </p>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/10 bg-[#202020] px-4 text-sm font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
+                >
+                  Clear all
+                </button>
+              </div>
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-x-8">
                 <div className="space-y-3.5">
                   <div className="space-y-2.5">

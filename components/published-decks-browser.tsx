@@ -108,13 +108,11 @@ function DeckCard({
       isLegendary: false,
     })),
   ];
-  const row1 = allCards.slice(0, 7);
-  const row2 = allCards.slice(7, 13);
 
   return (
     <article className="w-full overflow-hidden rounded-[16px] border border-white/8 bg-[#141414] p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="min-w-0">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-1.5">
             <h2 className="truncate text-sm font-bold tracking-tight text-white">
               {deck.deckName || "Untitled Deck"}
@@ -143,7 +141,7 @@ function DeckCard({
             ) : null}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 self-start">
           <button
             type="button"
             onClick={onShare}
@@ -179,10 +177,10 @@ function DeckCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
-        {row1.map((item, index) => (
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-7">
+        {allCards.map((item, index) => (
           <div
-            key={`${deck._id}-r1-${item.slug}-${index}`}
+            key={`${deck._id}-${item.slug}-${index}`}
             className={`relative aspect-275/400 overflow-hidden rounded-[4px] bg-[#1a1a1a] ${
               item.isLegendary
                 ? "border border-[#e0c15a]/40"
@@ -194,7 +192,7 @@ function DeckCard({
                 src={`/${item.card.artPath}`}
                 alt={item.card.name}
                 fill
-                sizes="14%"
+                sizes="(max-width: 768px) 23vw, 14vw"
                 className="object-cover"
               />
             ) : (
@@ -202,29 +200,6 @@ function DeckCard({
             )}
           </div>
         ))}
-      </div>
-
-      <div className="mt-1 grid grid-cols-7 gap-1">
-        <div className="col-span-6 col-start-1 grid grid-cols-6 gap-1">
-          {row2.map((item, index) => (
-            <div
-              key={`${deck._id}-r2-${item.slug}-${index}`}
-              className="relative aspect-275/400 overflow-hidden rounded-[4px] border border-white/6 bg-[#1a1a1a]"
-            >
-              {item.card ? (
-                <Image
-                  src={`/${item.card.artPath}`}
-                  alt={item.card.name}
-                  fill
-                  sizes="14%"
-                  className="object-cover"
-                />
-              ) : (
-                <div className="h-full w-full bg-[#1a1a1a]" />
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </article>
   );
@@ -394,20 +369,11 @@ export function PublishedDecksBrowser({
               placeholder="Search decks..."
               className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/28"
             />
-            <div className="flex items-center gap-2">
-              {filtersOpen ? (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="rounded-full border border-white/8 bg-[#1a1a1a] px-4 py-2 text-sm font-semibold text-white/70 transition hover:border-white/16 hover:text-white"
-                >
-                  Reset
-                </button>
-              ) : null}
+            <div className="flex items-center">
               <button
                 type="button"
                 onClick={() => setFiltersOpen((open) => !open)}
-                className="rounded-full border border-white/10 bg-[#1a1a1a] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-[#222222]"
+                className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-[#222222]"
               >
                 Filters
                 {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
@@ -417,6 +383,18 @@ export function PublishedDecksBrowser({
 
           {filtersOpen ? (
             <div className="border-t border-white/6 px-4 pb-3.5 pt-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/36">
+                  Filter Decks
+                </p>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/8 bg-[#1a1a1a] px-4 text-sm font-semibold text-white/70 transition hover:border-white/16 hover:text-white"
+                >
+                  Clear all
+                </button>
+              </div>
               <div className="space-y-2.5">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/36">
                   Archetype

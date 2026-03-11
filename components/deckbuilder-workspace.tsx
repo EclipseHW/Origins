@@ -1570,7 +1570,7 @@ export function DeckbuilderWorkspace({
   }
 
   return (
-    <section className="grid gap-6 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
+    <section className="grid gap-6 pb-5 xl:h-full xl:grid-cols-[480px_minmax(0,1fr)] xl:overflow-hidden">
       <aside className="flex flex-col gap-4 xl:sticky xl:top-0 xl:h-full xl:self-start xl:overflow-hidden">
         {workspaceLoading ? (
             <div className="rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
@@ -1583,14 +1583,14 @@ export function DeckbuilderWorkspace({
             </div>
           ) : isSignedOut || visibleSelectedDeck ? null : canUseCloudDecks && !cloudDecksLoading ? (
             <div className="space-y-3 rounded-[28px] border border-white/10 bg-[#161616] p-4 shadow-[0_18px_38px_rgba(0,0,0,0.22)]">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h1 className="text-2xl font-semibold tracking-tight text-white">
                   Saved Decks
                 </h1>
                 <button
                   type="button"
                   onClick={handleCreateDeck}
-                  className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90"
+                  className="w-full rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 sm:w-auto"
                 >
                   Create New
                 </button>
@@ -1641,238 +1641,238 @@ export function DeckbuilderWorkspace({
 
         {(!importResolutionPending && isSignedOut) || Boolean(visibleSelectedDeck) ? (
           <>
-            <div className="flex items-start gap-4">
-          <div className="w-full max-w-[160px] shrink-0">
-            <DeckFrame
-              card={legendaryCard}
-              onRemove={() =>
-                void updateSelectedDeck((deck) => ({
-                  ...deck,
-                  legendarySlug: null,
-                }))
-              }
-              highlight
-            />
-          </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="w-full max-w-[140px] shrink-0 self-center sm:max-w-[160px] sm:self-auto">
+                <DeckFrame
+                  card={legendaryCard}
+                  onRemove={() =>
+                    void updateSelectedDeck((deck) => ({
+                      ...deck,
+                      legendarySlug: null,
+                    }))
+                  }
+                  highlight
+                />
+              </div>
 
-	            <div className="mt-2 flex flex-1 flex-col">
-	              <div className="flex items-center justify-between gap-3">
-	                <div className="flex items-center gap-1">
-	                  {hasClerkSession ? (
-	                    <button
-	                      type="button"
-	                      onClick={handleBackToDecks}
-	                      className={deckViewToolbarButtonClass}
-	                      aria-label="Back to saved decks"
-	                    >
-	                      <ArrowLeft size={16} strokeWidth={2.2} />
-	                    </button>
-	                  ) : null}
-	                  <button
-	                    type="button"
-	                    onClick={() => void handleCopyDeckCode()}
-	                    className={deckViewToolbarButtonClass}
-	                    aria-label="Copy deck code"
-	                  >
-	                    {copyFeedback ? (
-	                      <Check size={16} strokeWidth={2.2} color="#34d399" />
-	                    ) : (
-	                      <Copy size={16} strokeWidth={2.2} />
-	                    )}
-	                  </button>
-	                  <button
-	                    type="button"
-	                    onClick={() => void handleImportDeckCode()}
-	                    className={deckViewToolbarButtonClass}
-	                    aria-label="Import deck code"
-	                  >
-	                    <Download size={16} strokeWidth={2.2} />
-	                  </button>
-	                  {hasClerkSession ? (
-	                    <button
-	                      type="button"
-	                      onClick={() => void handleSaveDraft()}
-	                      aria-label={savedState === "saved" ? "Saved" : "Save deck"}
-	                      className={deckViewToolbarButtonClass}
-	                    >
-	                      {savedState === "saved" ? (
-	                        <Check size={16} strokeWidth={2.4} color="#34d399" />
-	                      ) : (
-	                        <Save size={16} strokeWidth={2.2} />
-	                      )}
-	                    </button>
-	                  ) : (
-	                    <SignInButton mode="modal">
-	                      <button
-	                        type="button"
+              <div className="mt-2 flex flex-1 flex-col">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {hasClerkSession ? (
+                      <button
+                        type="button"
+                        onClick={handleBackToDecks}
+                        className={deckViewToolbarButtonClass}
+                        aria-label="Back to saved decks"
+                      >
+                        <ArrowLeft size={16} strokeWidth={2.2} />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyDeckCode()}
+                      className={deckViewToolbarButtonClass}
+                      aria-label="Copy deck code"
+                    >
+                      {copyFeedback ? (
+                        <Check size={16} strokeWidth={2.2} color="#34d399" />
+                      ) : (
+                        <Copy size={16} strokeWidth={2.2} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleImportDeckCode()}
+                      className={deckViewToolbarButtonClass}
+                      aria-label="Import deck code"
+                    >
+                      <Download size={16} strokeWidth={2.2} />
+                    </button>
+                    {hasClerkSession ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveDraft()}
+                        aria-label={savedState === "saved" ? "Saved" : "Save deck"}
+                        className={deckViewToolbarButtonClass}
+                      >
+                        {savedState === "saved" ? (
+                          <Check size={16} strokeWidth={2.4} color="#34d399" />
+                        ) : (
+                          <Save size={16} strokeWidth={2.2} />
+                        )}
+                      </button>
+                    ) : (
+                      <SignInButton mode="modal">
+                        <button
+                          type="button"
                           onClick={() => prepareGuestDeckAuthTransfer("save")}
-	                        aria-label="Save deck"
-	                        className={deckViewToolbarButtonClass}
-	                      >
-	                        <Save size={16} strokeWidth={2.2} />
-	                      </button>
-	                    </SignInButton>
-	                  )}
-	                  <button
-	                    type="button"
-	                    onClick={() => {
-		                      if (visibleSelectedDeck) {
-		                        void handleDeleteSavedDeck(visibleSelectedDeck._id);
-		                      }
-		                    }}
-	                    className={deckViewToolbarDeleteButtonClass}
-	                    aria-label="Delete deck"
-	                  >
-	                    <Trash2 size={16} strokeWidth={2.2} color="#f87171" />
-	                  </button>
-	                </div>
-	                <div className="relative w-26 shrink-0">
-	                  <select
-		                    value={visibleSelectedDeck?.archetype ?? ""}
-	                    onChange={(event) => {
-	                      const nextValue = event.target.value;
-	                      void updateSelectedDeck((deck) => ({
-	                        ...deck,
-	                        archetype:
-	                          nextValue.length > 0
-	                            ? (nextValue as DeckArchetype)
-	                            : null,
-	                      }));
-	                    }}
-	                    className="h-8 w-full appearance-none rounded-lg border border-white/12 bg-[#202020] px-2.5 pr-7 text-xs font-medium text-white outline-none transition hover:border-white/24 focus:border-white/28"
-	                  >
-	                    <option value="">Unassigned</option>
-	                    {DECK_ARCHETYPE_OPTIONS.map((option) => (
-	                      <option key={option} value={option}>
-	                        {option}
-	                      </option>
-	                    ))}
-	                  </select>
-	                  <ChevronDown
-	                    size={14}
-	                    strokeWidth={2.2}
-	                    className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-white/68"
-	                  />
-	                </div>
-			              </div>
+                          aria-label="Save deck"
+                          className={deckViewToolbarButtonClass}
+                        >
+                          <Save size={16} strokeWidth={2.2} />
+                        </button>
+                      </SignInButton>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (visibleSelectedDeck) {
+                          void handleDeleteSavedDeck(visibleSelectedDeck._id);
+                        }
+                      }}
+                      className={deckViewToolbarDeleteButtonClass}
+                      aria-label="Delete deck"
+                    >
+                      <Trash2 size={16} strokeWidth={2.2} color="#f87171" />
+                    </button>
+                  </div>
+                  <div className="relative w-full shrink-0 sm:w-26">
+                    <select
+                      value={visibleSelectedDeck?.archetype ?? ""}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        void updateSelectedDeck((deck) => ({
+                          ...deck,
+                          archetype:
+                            nextValue.length > 0
+                              ? (nextValue as DeckArchetype)
+                              : null,
+                        }));
+                      }}
+                      className="h-8 w-full appearance-none rounded-lg border border-white/12 bg-[#202020] px-2.5 pr-7 text-xs font-medium text-white outline-none transition hover:border-white/24 focus:border-white/28"
+                    >
+                      <option value="">Unassigned</option>
+                      {DECK_ARCHETYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={14}
+                      strokeWidth={2.2}
+                      className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-white/68"
+                    />
+                  </div>
+                </div>
 
-		              <div className="mt-auto flex flex-col gap-2 pt-4">
-	                <div className="relative">
-	                  <button
-	                    type="button"
-	                    onClick={handleRandomMulligan}
-	                    disabled={fullDeck.length === 0}
-	                    className="w-full rounded-full border border-white/16 bg-transparent px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-white/28 hover:text-white disabled:cursor-not-allowed disabled:text-white/38"
-	                  >
-	                    Simulate Hand
-	                  </button>
+                <div className="mt-auto flex flex-col gap-2 pt-4">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={handleRandomMulligan}
+                      disabled={fullDeck.length === 0}
+                      className="w-full rounded-full border border-white/16 bg-transparent px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-white/28 hover:text-white disabled:cursor-not-allowed disabled:text-white/38"
+                    >
+                      Simulate Hand
+                    </button>
 
-		                  {mulliganOpen ? (
-		                    <div className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
-	                      <div className="mb-3 flex items-center justify-between gap-3">
-	                        <div>
-	                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-	                            Opening Hand
-	                          </p>
-	                          <p className="text-sm text-white/64">
-	                            {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
-	                          </p>
-	                        </div>
-	                        <div className="flex items-center gap-2">
-	                          <button
-	                            type="button"
-	                            onClick={handleRandomMulligan}
-	                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
-	                            aria-label="Refresh mulligan hand"
-	                          >
-	                            ↻
-	                          </button>
-	                          <button
-	                            type="button"
-	                            onClick={() => setMulliganOpen(false)}
-	                            className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
-	                            aria-label="Close mulligan preview"
-	                          >
-	                            Close
-	                          </button>
-	                        </div>
-	                      </div>
+                    {mulliganOpen ? (
+                      <div className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+                              Opening Hand
+                            </p>
+                            <p className="text-sm text-white/64">
+                              {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleRandomMulligan}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
+                              aria-label="Refresh mulligan hand"
+                            >
+                              ↻
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMulliganOpen(false)}
+                              className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
+                              aria-label="Close mulligan preview"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
 
-	                      <div className="grid grid-cols-3 gap-2">
-	                        {mulliganCards.map((card, index) => (
-	                          <div
-	                            key={`${card.slug}-${index}`}
-	                            className="overflow-hidden rounded-none border border-white/10 bg-[#202020]"
-	                          >
-	                            <div className="relative aspect-275/400 overflow-hidden">
-	                              <Image
-	                                src={`/${card.artPath}`}
-	                                alt={card.name}
-	                                fill
-	                                sizes="120px"
-	                                className="object-cover"
-	                              />
-	                            </div>
-	                          </div>
-	                        ))}
-	                      </div>
-	                    </div>
-	                  ) : null}
-	                </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {mulliganCards.map((card, index) => (
+                            <div
+                              key={`${card.slug}-${index}`}
+                              className="overflow-hidden rounded-none border border-white/10 bg-[#202020]"
+                            >
+                              <div className="relative aspect-275/400 overflow-hidden">
+                                <Image
+                                  src={`/${card.artPath}`}
+                                  alt={card.name}
+                                  fill
+                                  sizes="120px"
+                                  className="object-cover"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
 
-	                {hasClerkSession ? (
-		                  <button
-		                    type="button"
-		                    onClick={() => void handlePublishDeck()}
-		                    disabled={
+                  {hasClerkSession ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePublishDeck()}
+                      disabled={
                         !canUseCloudDecks ||
                         (!visibleSelectedDeck?.publishedAt &&
                           (!canPublishSelectedDeck || publishBlockedByDuplicate))
                       }
-                        title={
-                          publishBlockedByDuplicate
-                            ? "An identical published deck already exists"
-                            : undefined
-                        }
-		                    className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20 disabled:cursor-not-allowed disabled:border-white/12 disabled:bg-transparent disabled:text-white/38"
-		                  >
-	                    {visibleSelectedDeck?.publishedAt ? "Unpublish" : "Publish"}
-	                  </button>
-		                ) : (
-		                  <SignInButton mode="modal">
-		                    <button
-		                      type="button"
-                          onClick={() => prepareGuestDeckAuthTransfer("publish")}
-		                      className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20"
-		                    >
-	                      Publish
-	                    </button>
-	                  </SignInButton>
-	                )}
-	              </div>
-		            </div>
-		            </div>
+                      title={
+                        publishBlockedByDuplicate
+                          ? "An identical published deck already exists"
+                          : undefined
+                      }
+                      className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20 disabled:cursor-not-allowed disabled:border-white/12 disabled:bg-transparent disabled:text-white/38"
+                    >
+                      {visibleSelectedDeck?.publishedAt ? "Unpublish" : "Publish"}
+                    </button>
+                  ) : (
+                    <SignInButton mode="modal">
+                      <button
+                        type="button"
+                        onClick={() => prepareGuestDeckAuthTransfer("publish")}
+                        className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20"
+                      >
+                        Publish
+                      </button>
+                    </SignInButton>
+                  )}
+                </div>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-4 gap-4">
-          {Array.from({ length: 12 }, (_, index) => {
-            const card = deckCards[index] ?? null;
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4">
+              {Array.from({ length: 12 }, (_, index) => {
+                const card = deckCards[index] ?? null;
 
-            return (
-              <DeckFrame
-                key={index}
-                card={card}
-                onRemove={() =>
-                  void updateSelectedDeck((deck) => ({
-                    ...deck,
-                    cardSlugs: deck.cardSlugs.filter(
-                      (_, currentIndex) => currentIndex !== index,
-                    ),
-                  }))
-                }
-                compact
-              />
-            );
-          })}
+                return (
+                  <DeckFrame
+                    key={index}
+                    card={card}
+                    onRemove={() =>
+                      void updateSelectedDeck((deck) => ({
+                        ...deck,
+                        cardSlugs: deck.cardSlugs.filter(
+                          (_, currentIndex) => currentIndex !== index,
+                        ),
+                      }))
+                    }
+                    compact
+                  />
+                );
+              })}
             </div>
           </>
         ) : null}
@@ -1898,20 +1898,11 @@ export function DeckbuilderWorkspace({
                     placeholder="Search cards, effects, or keywords"
                     className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
                   />
-                  <div className="flex items-center gap-2">
-                    {filtersOpen ? (
-                      <button
-                        type="button"
-                        onClick={resetFilters}
-                        className="rounded-full border border-white/10 bg-[#202020] px-4 py-2 text-[0.8rem] font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
-                      >
-                        Reset
-                      </button>
-                    ) : null}
+                  <div className="flex items-center">
                     <button
                       type="button"
                       onClick={() => setFiltersOpen((open) => !open)}
-                      className="rounded-full border border-white/14 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
+                      className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
                     >
                       Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
                     </button>
@@ -1920,6 +1911,18 @@ export function DeckbuilderWorkspace({
 
                 {filtersOpen ? (
                   <div className="border-t border-white/10 bg-[#1c1c1c] px-4 pb-3.5 pt-4">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                        Filter Cards
+                      </p>
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/10 bg-[#202020] px-4 text-sm font-semibold text-white/84 transition hover:border-white/24 hover:bg-[#252525]"
+                      >
+                        Clear all
+                      </button>
+                    </div>
                     <div className="grid gap-5 xl:grid-cols-2 xl:gap-x-8">
                       <div className="space-y-3.5">
                         <div className="space-y-2.5">
