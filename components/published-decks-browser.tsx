@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { ArrowUpRight, Check, Copy, Share2 } from "lucide-react";
+import { Check, Copy, Hammer, Share2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cardsBySlug, type CardDefinition } from "@/lib/cards";
@@ -19,6 +19,7 @@ const listPublishedDecksReference = makeFunctionReference<
 
 const actionButtonClass =
   "inline-flex h-6 w-6 items-center justify-center rounded-full text-white/32 transition hover:bg-white/8 hover:text-white/70";
+const PENDING_BUILDER_IMPORT_STORAGE_KEY = "origins:pending-builder-import";
 
 function formatPublisherHandle(deck: DeckRecord) {
   return deck.publisherName ?? deck.publisherUsername ?? "Unknown";
@@ -124,7 +125,7 @@ function DeckCard({
             <span className="text-sm font-bold tracking-tight text-white/80">
               Published by {formatPublisherHandle(deck)}
             </span>
-            <span className="text-sm font-bold tracking-tight text-white">
+            <span className="text-sm font-bold tracking-tight text-white/80">
               ·
             </span>
             <span className="text-sm font-bold tracking-tight text-white/80">
@@ -173,7 +174,7 @@ function DeckCard({
             className={actionButtonClass}
             aria-label="Open in builder"
           >
-            <ArrowUpRight size={16} strokeWidth={2.2} />
+            <Hammer size={16} strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -369,9 +370,16 @@ export function PublishedDecksBrowser({
       archetype: deck.archetype,
     });
 
-    router.push(
-      `/deckbuilder?deck=${encodeURIComponent(externalCode ?? fallbackCode)}`,
-    );
+    const importCode = externalCode ?? fallbackCode;
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        PENDING_BUILDER_IMPORT_STORAGE_KEY,
+        importCode,
+      );
+    }
+
+    router.push("/deckbuilder");
   }
 
   return (

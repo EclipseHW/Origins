@@ -7,6 +7,7 @@ export default defineSchema({
     deckName: v.string(),
     legendarySlug: v.union(v.string(), v.null()),
     cardSlugs: v.array(v.string()),
+    deckFingerprint: v.optional(v.union(v.string(), v.null())),
     archetype: v.optional(
       v.union(
         v.literal("Aggro"),
@@ -23,5 +24,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
+    .index("by_deckFingerprint", ["deckFingerprint"])
     .index("by_publishedAt", ["publishedAt"]),
 });

@@ -6,6 +6,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { normalizeDeckRecord } from "../lib/deck-types";
+import { getDeckFingerprint } from "../lib/deck-fingerprint";
 
 function getPublisherUsername(identity: Awaited<ReturnType<QueryCtx["auth"]["getUserIdentity"]>>) {
   if (!identity) {
@@ -47,10 +48,29 @@ async function requireUserId(ctx: QueryCtx | MutationCtx) {
   return identity.subject;
 }
 
+async function getPublishedDecksByFingerprint(
+  ctx: QueryCtx | MutationCtx,
+  deckFingerprint: string,
+) {
+  const decks = await ctx.db
+    .query("decks")
+    .withIndex("by_deckFingerprint", (q) =>
+      q.eq("deckFingerprint", deckFingerprint),
+    )
+    .collect();
+
+  return decks.filter((deck) => deck.publishedAt != null);
+}
+
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const userId = identity.subject;
     const decks = await ctx.db
       .query("decks")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -74,6 +94,7 @@ export const create = mutation({
       deckName: args.deckName,
       legendarySlug: null,
       cardSlugs: [],
+      deckFingerprint: null,
       archetype: null,
       publisherName: null,
       publisherUsername: null,
@@ -108,10 +129,16 @@ export const update = mutation({
       throw new Error("Deck not found");
     }
 
+    const deckFingerprint = getDeckFingerprint(
+      args.legendarySlug,
+      args.cardSlugs,
+    );
+
     await ctx.db.patch(args.deckId, {
       deckName: args.deckName,
       legendarySlug: args.legendarySlug,
       cardSlugs: args.cardSlugs,
+      deckFingerprint,
       archetype: args.archetype,
       updatedAt: Date.now(),
     });
@@ -151,13 +178,51 @@ export const publish = mutation({
           throw new Error("Only full decks with a legendary and 12 cards can be published");
         }
 
+        const deckFingerprint =
+          deck.deckFingerprint ??
+          getDeckFingerprint(deck.legendarySlug, deck.cardSlugs);
+
+        if (!deckFingerprint) {
+          throw new Error("Only full decks with a legendary and 12 cards can be published");
+        }
+
+        const duplicatePublishedDeck = (
+          await getPublishedDecksByFingerprint(ctx, deckFingerprint)
+        ).find((publishedDeck) => publishedDeck._id !== args.deckId);
+
+        if (duplicatePublishedDeck) {
+          throw new Error("An identical published deck already exists");
+        }
+
 	    const timestamp = Date.now();
 
     await ctx.db.patch(args.deckId, {
+      deckFingerprint,
       publishedAt: timestamp,
       publisherName: getPublisherName(identity),
       publisherUsername: getPublisherUsername(identity),
       updatedAt: timestamp,
+    });
+  },
+});
+
+export const unpublish = mutation({
+  args: {
+    deckId: v.id("decks"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const deck = await ctx.db.get(args.deckId);
+
+    if (!deck || deck.userId !== userId) {
+      throw new Error("Deck not found");
+    }
+
+    await ctx.db.patch(args.deckId, {
+      publishedAt: null,
+      publisherName: null,
+      publisherUsername: null,
+      updatedAt: Date.now(),
     });
   },
 });
@@ -174,6 +239,21 @@ export const listPublished = query({
     return decks
       .map((deck) => normalizeDeckRecord(deck))
       .filter((deck) => deck.publishedAt !== null);
+  },
+});
+
+export const hasPublishedDuplicate = query({
+  args: {
+    deckFingerprint: v.string(),
+    excludeDeckId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const excludedDeckId = args.excludeDeckId
+      ? ctx.db.normalizeId("decks", args.excludeDeckId)
+      : null;
+    const decks = await getPublishedDecksByFingerprint(ctx, args.deckFingerprint);
+
+    return decks.some((deck) => deck._id !== excludedDeckId);
   },
 });
 
