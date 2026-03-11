@@ -138,16 +138,20 @@ export const publish = mutation({
   args: {
     deckId: v.id("decks"),
   },
-  handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
-    const deck = await ctx.db.get(args.deckId);
+	  handler: async (ctx, args) => {
+	    const identity = await requireIdentity(ctx);
+	    const userId = identity.subject;
+	    const deck = await ctx.db.get(args.deckId);
 
-    if (!deck || deck.userId !== userId) {
-      throw new Error("Deck not found");
-    }
+	    if (!deck || deck.userId !== userId) {
+	      throw new Error("Deck not found");
+	    }
 
-    const timestamp = Date.now();
+        if (!deck.legendarySlug || deck.cardSlugs.length !== 12) {
+          throw new Error("Only full decks with a legendary and 12 cards can be published");
+        }
+
+	    const timestamp = Date.now();
 
     await ctx.db.patch(args.deckId, {
       publishedAt: timestamp,
@@ -161,13 +165,41 @@ export const publish = mutation({
 export const listPublished = query({
   args: {},
   handler: async (ctx) => {
-    const decks = await ctx.db.query("decks").collect();
+    const decks = await ctx.db
+      .query("decks")
+      .withIndex("by_publishedAt", (q) => q.gt("publishedAt", 0))
+      .order("desc")
+      .collect();
 
     return decks
       .map((deck) => normalizeDeckRecord(deck))
-      .filter((deck) => deck.publishedAt !== null)
-      .sort(
-        (left, right) => (right.publishedAt ?? 0) - (left.publishedAt ?? 0),
-      );
+      .filter((deck) => deck.publishedAt !== null);
+  },
+});
+
+export const getPublishedById = query({
+  args: {
+    deckId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedId = ctx.db.normalizeId("decks", args.deckId);
+
+    if (!normalizedId) {
+      return null;
+    }
+
+    const deck = await ctx.db.get(normalizedId);
+
+    if (!deck) {
+      return null;
+    }
+
+    const normalizedDeck = normalizeDeckRecord(deck);
+
+    if (normalizedDeck.publishedAt === null) {
+      return null;
+    }
+
+    return normalizedDeck;
   },
 });

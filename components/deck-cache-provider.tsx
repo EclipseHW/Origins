@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useEffect,
   useCallback,
   useContext,
   useMemo,
@@ -12,13 +13,54 @@ import { normalizeDeckRecord, type DeckRecord } from "@/lib/deck-types";
 
 type DeckCacheContextValue = {
   decksByUserId: Record<string, DeckRecord[]>;
+  cacheHydrated: boolean;
   setCachedDecks: (userId: string, decks: DeckRecord[]) => void;
 };
 
 const DeckCacheContext = createContext<DeckCacheContextValue | null>(null);
+const DECK_CACHE_STORAGE_KEY = "origins:deck-cache:v1";
 
 function cloneDeck(deck: DeckRecord): DeckRecord {
   return normalizeDeckRecord(deck);
+}
+
+function readPersistedDecks(): Record<string, DeckRecord[]> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(DECK_CACHE_STORAGE_KEY);
+
+    if (!rawValue) {
+      return {};
+    }
+
+    const parsedValue = JSON.parse(rawValue);
+
+    if (!parsedValue || typeof parsedValue !== "object") {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsedValue).flatMap(([userId, decks]) => {
+        if (!Array.isArray(decks)) {
+          return [];
+        }
+
+        return [
+          [
+            userId,
+            decks
+              .filter((deck): deck is DeckRecord => Boolean(deck))
+              .map((deck) => cloneDeck(deck)),
+          ],
+        ];
+      }),
+    );
+  } catch {
+    return {};
+  }
 }
 
 function decksMatch(left: DeckRecord[], right: DeckRecord[]) {
@@ -46,8 +88,20 @@ function decksMatch(left: DeckRecord[], right: DeckRecord[]) {
 
 export function DeckCacheProvider({ children }: { children: ReactNode }) {
   const [decksByUserId, setDecksByUserId] = useState<Record<string, DeckRecord[]>>(
-    {},
+    () => readPersistedDecks(),
   );
+  const [cacheHydrated] = useState(() => typeof window !== "undefined");
+
+  useEffect(() => {
+    if (!cacheHydrated || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      DECK_CACHE_STORAGE_KEY,
+      JSON.stringify(decksByUserId),
+    );
+  }, [cacheHydrated, decksByUserId]);
 
   const setCachedDecks = useCallback((userId: string, decks: DeckRecord[]) => {
     setDecksByUserId((current) => {
@@ -68,9 +122,10 @@ export function DeckCacheProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DeckCacheContextValue>(
     () => ({
       decksByUserId,
+      cacheHydrated,
       setCachedDecks,
     }),
-    [decksByUserId, setCachedDecks],
+    [cacheHydrated, decksByUserId, setCachedDecks],
   );
 
   return (

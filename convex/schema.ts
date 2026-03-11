@@ -21,5 +21,7 @@ export default defineSchema({
     publishedAt: v.optional(v.union(v.number(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_publishedAt", ["publishedAt"]),
 });

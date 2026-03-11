@@ -6,9 +6,11 @@ import { makeFunctionReference } from "convex/server";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   Copy,
   Download,
   Pencil,
+  Save,
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
@@ -52,10 +54,10 @@ const savedDeckActionButtonClass =
   `${iconActionButtonBaseClass} h-8 w-8`;
 const savedDeckDeleteButtonClass =
   `${iconDeleteButtonBaseClass} h-8 w-8`;
-const deckViewActionButtonClass =
-  `${iconActionButtonBaseClass} h-9 w-9 shrink-0 self-center`;
-const deckViewDeleteButtonClass =
-  `${iconDeleteButtonBaseClass} h-9 w-9 shrink-0 self-center`;
+const deckViewToolbarButtonClass =
+  `${iconActionButtonBaseClass} h-8 w-8 shrink-0 self-center`;
+const deckViewToolbarDeleteButtonClass =
+  `${iconDeleteButtonBaseClass} h-8 w-8 shrink-0 self-center`;
 
 type OptimisticDeck = DeckDraft & {
   updatedAt: number;
@@ -178,7 +180,49 @@ function drawRandomHand(deck: string[], handSize: number): string[] {
   return pool.slice(0, Math.min(handSize, pool.length));
 }
 
-function sanitizeImportedDeck(deck: PortableDeckState): PortableDeckState {
+function sortDeckCardSlugs(
+  cardSlugs: string[],
+  cardBySlug: Record<string, CardDefinition>,
+): string[] {
+  return [...cardSlugs].sort((leftSlug, rightSlug) => {
+    const leftCard = cardBySlug[leftSlug];
+    const rightCard = cardBySlug[rightSlug];
+
+    if (!leftCard || !rightCard) {
+      return leftSlug.localeCompare(rightSlug);
+    }
+
+    const leftTypePriority =
+      leftCard.cardType === "Unit" ? 0 : leftCard.cardType === "Spell" ? 1 : 2;
+    const rightTypePriority =
+      rightCard.cardType === "Unit" ? 0 : rightCard.cardType === "Spell" ? 1 : 2;
+
+    if (leftTypePriority !== rightTypePriority) {
+      return leftTypePriority - rightTypePriority;
+    }
+
+    if (leftCard.mana !== rightCard.mana) {
+      return leftCard.mana - rightCard.mana;
+    }
+
+    return leftCard.name.localeCompare(rightCard.name);
+  });
+}
+
+function normalizeDeckCardOrder<T extends { cardSlugs: string[] }>(
+  deck: T,
+  cardBySlug: Record<string, CardDefinition>,
+): T {
+  return {
+    ...deck,
+    cardSlugs: sortDeckCardSlugs(deck.cardSlugs, cardBySlug),
+  };
+}
+
+function sanitizeImportedDeck(
+  deck: PortableDeckState,
+  cardBySlug: Record<string, CardDefinition>,
+): PortableDeckState {
   const uniqueCardSlugs = deck.cardSlugs.filter(
     (slug, index, items) => items.indexOf(slug) === index,
   );
@@ -186,7 +230,7 @@ function sanitizeImportedDeck(deck: PortableDeckState): PortableDeckState {
   return {
     deckName: deck.deckName,
     legendarySlug: deck.legendarySlug,
-    cardSlugs: uniqueCardSlugs.slice(0, 12),
+    cardSlugs: sortDeckCardSlugs(uniqueCardSlugs.slice(0, 12), cardBySlug),
     archetype: deck.archetype,
   };
 }
@@ -558,10 +602,10 @@ export function DeckbuilderWorkspace({
 	    );
 	  }, [canUseCloudDecks, currentUserId, setCachedDecks, signedInDecks]);
 
-  const savedDecks = useMemo(() => {
-    if (isSignedOut) {
-      return guestDecks;
-    }
+	  const savedDecks = useMemo(() => {
+	    if (isSignedOut) {
+	      return guestDecks.map((deck) => normalizeDeckCardOrder(deck, cardBySlug));
+	    }
 
     if (!hasClerkSession) {
       return [];
@@ -571,15 +615,18 @@ export function DeckbuilderWorkspace({
       return [];
     }
 
-	    return (hydratedSignedInDecks ?? []).map((deck) => {
-	      const baseDeck = normalizeDeckRecord(deck);
-	      const optimisticDeck = optimisticDecks[deck._id];
+		    return (hydratedSignedInDecks ?? []).map((deck) => {
+		      const baseDeck = normalizeDeckRecord(deck);
+		      const optimisticDeck = optimisticDecks[deck._id];
 
-	      return optimisticDeck
-	        ? normalizeDeckRecord({ ...baseDeck, ...optimisticDeck })
-	        : baseDeck;
-	    });
-	  }, [canUseCloudDecks, guestDecks, hasClerkSession, hydratedSignedInDecks, isSignedOut, optimisticDecks]);
+		      return optimisticDeck
+		        ? normalizeDeckCardOrder(
+		            normalizeDeckRecord({ ...baseDeck, ...optimisticDeck }),
+		            cardBySlug,
+		          )
+		        : normalizeDeckCardOrder(baseDeck, cardBySlug);
+		    });
+		  }, [canUseCloudDecks, guestDecks, hasClerkSession, hydratedSignedInDecks, isSignedOut, optimisticDecks, cardBySlug]);
 
   useEffect(() => {
     savedDecksRef.current = savedDecks;
@@ -652,9 +699,11 @@ export function DeckbuilderWorkspace({
   const workspaceLoading =
     !selectedDeck &&
     (authBooting || (hasClerkSession && canUseCloudDecks && cloudDecksLoading));
-  const legendarySlug = selectedDeck?.legendarySlug ?? null;
-  const cardSlugs = selectedDeck?.cardSlugs ?? EMPTY_CARD_SLUGS;
-  const legendaryCard = legendarySlug ? cardBySlug[legendarySlug] ?? null : null;
+	  const legendarySlug = selectedDeck?.legendarySlug ?? null;
+	  const cardSlugs = selectedDeck?.cardSlugs ?? EMPTY_CARD_SLUGS;
+      const canPublishSelectedDeck =
+        Boolean(selectedDeck?.legendarySlug) && cardSlugs.length === 12;
+	  const legendaryCard = legendarySlug ? cardBySlug[legendarySlug] ?? null : null;
   const deckCards = cardSlugs.map((slug) => cardBySlug[slug]).filter(Boolean);
   const openingHandSize = getOpeningHandSize(legendaryCard);
   const fullDeck = useMemo(() => {
@@ -694,7 +743,7 @@ export function DeckbuilderWorkspace({
           return;
         }
 
-        const sanitizedDeck = sanitizeImportedDeck(importedDeck);
+	        const sanitizedDeck = sanitizeImportedDeck(importedDeck, cardBySlug);
 
         if (hasClerkSession && !canUseCloudDecks) {
           return;
@@ -741,11 +790,12 @@ export function DeckbuilderWorkspace({
         };
 
         void applyImportedDeck();
-      }, [
-        cardByExternalId,
-        canUseCloudDecks,
-        createDeckMutation,
-        hasClerkSession,
+	      }, [
+	        cardByExternalId,
+        cardBySlug,
+	        canUseCloudDecks,
+	        createDeckMutation,
+	        hasClerkSession,
         router,
         searchParams,
         updateDeckMutation,
@@ -969,19 +1019,19 @@ export function DeckbuilderWorkspace({
     await waitForCloudSave(deckId);
   }
 
-  async function persistDeck(
-    deckId: string,
-    updater: (deck: DeckRecord) => DeckRecord,
-    options?: { immediate?: boolean; savedState?: SavedState },
-  ) {
+	  async function persistDeck(
+	    deckId: string,
+	    updater: (deck: DeckRecord) => DeckRecord,
+	    options?: { immediate?: boolean; savedState?: SavedState },
+	  ) {
     const deck = getCurrentDeck(deckId);
     if (!deck) {
       return;
     }
 
-    const nextDeck = updater(deck);
-    if (canUseCloudDecks) {
-      const nextDraft = toDeckDraft(nextDeck);
+	    const nextDeck = normalizeDeckCardOrder(updater(deck), cardBySlug);
+	    if (canUseCloudDecks) {
+	      const nextDraft = toDeckDraft(nextDeck);
       const draftChanged = !deckDraftsMatch(deck, nextDraft);
 
       if (!draftChanged && !options?.savedState) {
@@ -1132,13 +1182,13 @@ export function DeckbuilderWorkspace({
     }
   }
 
-  async function handlePublishDeck() {
-    if (!selectedDeck || !canUseCloudDecks) {
-      return;
-    }
+	  async function handlePublishDeck() {
+	    if (!selectedDeck || !canUseCloudDecks || !canPublishSelectedDeck) {
+	      return;
+	    }
 
-    await settleCloudDeck(selectedDeck._id);
-    await publishDeckMutation({ deckId: selectedDeck._id });
+	    await settleCloudDeck(selectedDeck._id);
+	    await publishDeckMutation({ deckId: selectedDeck._id });
   }
 
   function handleRandomMulligan() {
@@ -1202,7 +1252,7 @@ export function DeckbuilderWorkspace({
       return;
     }
 
-        const sanitizedDeck = sanitizeImportedDeck(importedDeck);
+	        const sanitizedDeck = sanitizeImportedDeck(importedDeck, cardBySlug);
 
 	    await updateSelectedDeck((deck) => ({
 	      ...deck,
@@ -1302,188 +1352,192 @@ export function DeckbuilderWorkspace({
             />
           </div>
 
-            <div className="mt-2 flex-1 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="flex shrink-0 items-center gap-1">
-                  {hasClerkSession ? (
-                    <button
-                      type="button"
-                      onClick={handleBackToDecks}
-                      className={deckViewActionButtonClass}
-                      aria-label="Back to saved decks"
-                    >
-                      <ArrowLeft size={18} strokeWidth={2.2} />
-                    </button>
-                  ) : null}
+	            <div className="mt-2 flex flex-1 flex-col">
+	              <div className="flex items-center justify-between gap-3">
+	                <div className="flex items-center gap-1">
+	                  {hasClerkSession ? (
+	                    <button
+	                      type="button"
+	                      onClick={handleBackToDecks}
+	                      className={deckViewToolbarButtonClass}
+	                      aria-label="Back to saved decks"
+	                    >
+	                      <ArrowLeft size={16} strokeWidth={2.2} />
+	                    </button>
+	                  ) : null}
 	                  <button
 	                    type="button"
 	                    onClick={() => void handleCopyDeckCode()}
-	                    className={deckViewActionButtonClass}
+	                    className={deckViewToolbarButtonClass}
 	                    aria-label="Copy deck code"
 	                  >
 	                    {copyFeedback ? (
-	                      <Check size={18} strokeWidth={2.2} color="#34d399" />
+	                      <Check size={16} strokeWidth={2.2} color="#34d399" />
 	                    ) : (
-	                      <Copy size={18} strokeWidth={2.2} />
+	                      <Copy size={16} strokeWidth={2.2} />
 	                    )}
 	                  </button>
 	                  <button
 	                    type="button"
 	                    onClick={() => void handleImportDeckCode()}
-	                    className={deckViewActionButtonClass}
+	                    className={deckViewToolbarButtonClass}
 	                    aria-label="Import deck code"
 	                  >
-	                    <Download size={18} strokeWidth={2.2} />
+	                    <Download size={16} strokeWidth={2.2} />
 	                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedDeck) {
-                        void handleDeleteSavedDeck(selectedDeck._id);
-                      }
-                    }}
-                    className={deckViewDeleteButtonClass}
-                    aria-label="Delete deck"
-                  >
-                    <Trash2 size={18} strokeWidth={2.2} color="#f87171" />
-                  </button>
-                </div>
-                <div className="min-w-0 flex-1">
-                  {hasClerkSession ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveDraft()}
-                      className="inline-flex h-10 w-full items-center justify-center rounded-full bg-white px-3 text-sm font-semibold text-black transition hover:bg-white/90"
-                    >
-                      {savedState === "saved" ? "Saved" : "Save"}
-                    </button>
-                  ) : (
-                    <SignInButton mode="modal">
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-full items-center justify-center rounded-full bg-white px-3 text-sm font-semibold text-black transition hover:bg-white/90"
-                      >
-                        Save
-                      </button>
-                    </SignInButton>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  {hasClerkSession ? (
-                    <button
-                      type="button"
-                      onClick={() => void handlePublishDeck()}
-                      disabled={!canUseCloudDecks}
-                      className="inline-flex h-10 w-full items-center justify-center rounded-full border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
-                    >
-                      {selectedDeck?.publishedAt ? "Published" : "Publish"}
-                    </button>
-                  ) : (
-                    <SignInButton mode="modal">
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-full items-center justify-center rounded-full border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525]"
-                      >
-                        Publish
-                      </button>
-                    </SignInButton>
-                  )}
-                </div>
-              </div>
+	                  {hasClerkSession ? (
+	                    <button
+	                      type="button"
+	                      onClick={() => void handleSaveDraft()}
+	                      aria-label={savedState === "saved" ? "Saved" : "Save deck"}
+	                      className={deckViewToolbarButtonClass}
+	                    >
+	                      {savedState === "saved" ? (
+	                        <Check size={16} strokeWidth={2.4} color="#34d399" />
+	                      ) : (
+	                        <Save size={16} strokeWidth={2.2} />
+	                      )}
+	                    </button>
+	                  ) : (
+	                    <SignInButton mode="modal">
+	                      <button
+	                        type="button"
+	                        aria-label="Save deck"
+	                        className={deckViewToolbarButtonClass}
+	                      >
+	                        <Save size={16} strokeWidth={2.2} />
+	                      </button>
+	                    </SignInButton>
+	                  )}
+	                  <button
+	                    type="button"
+	                    onClick={() => {
+	                      if (selectedDeck) {
+	                        void handleDeleteSavedDeck(selectedDeck._id);
+	                      }
+	                    }}
+	                    className={deckViewToolbarDeleteButtonClass}
+	                    aria-label="Delete deck"
+	                  >
+	                    <Trash2 size={16} strokeWidth={2.2} color="#f87171" />
+	                  </button>
+	                </div>
+	                <div className="relative w-26 shrink-0">
+	                  <select
+	                    value={selectedDeck?.archetype ?? ""}
+	                    onChange={(event) => {
+	                      const nextValue = event.target.value;
+	                      void updateSelectedDeck((deck) => ({
+	                        ...deck,
+	                        archetype:
+	                          nextValue.length > 0
+	                            ? (nextValue as DeckArchetype)
+	                            : null,
+	                      }));
+	                    }}
+	                    className="h-8 w-full appearance-none rounded-lg border border-white/12 bg-[#202020] px-2.5 pr-7 text-xs font-medium text-white outline-none transition hover:border-white/24 focus:border-white/28"
+	                  >
+	                    <option value="">Unassigned</option>
+	                    {DECK_ARCHETYPE_OPTIONS.map((option) => (
+	                      <option key={option} value={option}>
+	                        {option}
+	                      </option>
+	                    ))}
+	                  </select>
+	                  <ChevronDown
+	                    size={14}
+	                    strokeWidth={2.2}
+	                    className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 text-white/68"
+	                  />
+	                </div>
+			              </div>
 
-	              <div className="relative">
-			                <button
-			                  type="button"
-			                  onClick={handleRandomMulligan}
-		                  disabled={fullDeck.length === 0}
-		                  className="w-full rounded-full border border-white/12 bg-[#202020] px-4 py-2 text-sm font-semibold text-white transition hover:border-white/24 hover:bg-[#252525] disabled:cursor-not-allowed disabled:text-white/38"
-		                >
-		                  Simulate Hand
-	                </button>
+		              <div className="mt-auto flex flex-col gap-2 pt-4">
+	                <div className="relative">
+	                  <button
+	                    type="button"
+	                    onClick={handleRandomMulligan}
+	                    disabled={fullDeck.length === 0}
+	                    className="w-full rounded-full border border-white/16 bg-transparent px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-white/28 hover:text-white disabled:cursor-not-allowed disabled:text-white/38"
+	                  >
+	                    Simulate Hand
+	                  </button>
 
-                {mulliganOpen ? (
-                  <div className="absolute left-0 top-[calc(100%+0.75rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-                          Opening Hand
-                        </p>
-                        <p className="text-sm text-white/64">
-                          {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleRandomMulligan}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
-                          aria-label="Refresh mulligan hand"
-                        >
-                          ↻
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMulliganOpen(false)}
-                          className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
-                          aria-label="Close mulligan preview"
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
+		                  {mulliganOpen ? (
+		                    <div className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-full rounded-[24px] border border-white/10 bg-[#1c1c1c] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.36)]">
+	                      <div className="mb-3 flex items-center justify-between gap-3">
+	                        <div>
+	                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+	                            Opening Hand
+	                          </p>
+	                          <p className="text-sm text-white/64">
+	                            {mulliganCards.length} card{mulliganCards.length === 1 ? "" : "s"}
+	                          </p>
+	                        </div>
+	                        <div className="flex items-center gap-2">
+	                          <button
+	                            type="button"
+	                            onClick={handleRandomMulligan}
+	                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-[#202020] text-lg text-white transition hover:border-white/24 hover:bg-[#252525]"
+	                            aria-label="Refresh mulligan hand"
+	                          >
+	                            ↻
+	                          </button>
+	                          <button
+	                            type="button"
+	                            onClick={() => setMulliganOpen(false)}
+	                            className="rounded-full border border-white/12 bg-[#202020] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:border-white/24 hover:bg-[#252525]"
+	                            aria-label="Close mulligan preview"
+	                          >
+	                            Close
+	                          </button>
+	                        </div>
+	                      </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                      {mulliganCards.map((card, index) => (
-	                        <div
-	                          key={`${card.slug}-${index}`}
-	                          className="overflow-hidden rounded-none border border-white/10 bg-[#202020]"
-	                        >
-                          <div className="relative aspect-275/400 overflow-hidden">
-                            <Image
-                              src={`/${card.artPath}`}
-                              alt={card.name}
-                              fill
-                              sizes="120px"
-                              className="object-cover"
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-	                  </div>
-	                ) : null}
+	                      <div className="grid grid-cols-3 gap-2">
+	                        {mulliganCards.map((card, index) => (
+	                          <div
+	                            key={`${card.slug}-${index}`}
+	                            className="overflow-hidden rounded-none border border-white/10 bg-[#202020]"
+	                          >
+	                            <div className="relative aspect-275/400 overflow-hidden">
+	                              <Image
+	                                src={`/${card.artPath}`}
+	                                alt={card.name}
+	                                fill
+	                                sizes="120px"
+	                                className="object-cover"
+	                              />
+	                            </div>
+	                          </div>
+	                        ))}
+	                      </div>
+	                    </div>
+	                  ) : null}
+	                </div>
+
+	                {hasClerkSession ? (
+	                  <button
+	                    type="button"
+	                    onClick={() => void handlePublishDeck()}
+	                    disabled={!canUseCloudDecks || !canPublishSelectedDeck}
+	                    className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20 disabled:cursor-not-allowed disabled:border-white/12 disabled:bg-transparent disabled:text-white/38"
+	                  >
+	                    {selectedDeck?.publishedAt ? "Published" : "Publish"}
+	                  </button>
+	                ) : (
+	                  <SignInButton mode="modal">
+	                    <button
+	                      type="button"
+	                      className="w-full rounded-full border border-[#e0c15a]/50 bg-[#e0c15a]/12 px-4 py-2.5 text-sm font-semibold text-[#e0c15a] transition hover:border-[#e0c15a]/70 hover:bg-[#e0c15a]/20"
+	                    >
+	                      Publish
+	                    </button>
+	                  </SignInButton>
+	                )}
 	              </div>
-
-                  <div className="grid gap-3">
-                    <label className="space-y-2">
-                      <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-white/42">
-                        Archetype
-                      </span>
-                      <select
-                        value={selectedDeck?.archetype ?? ""}
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-                          void updateSelectedDeck((deck) => ({
-                            ...deck,
-                            archetype:
-                              nextValue.length > 0
-                                ? (nextValue as DeckArchetype)
-                                : null,
-                          }));
-                        }}
-                        className="h-10 w-full rounded-[14px] border border-white/12 bg-[#202020] px-3 text-sm font-semibold text-white outline-none transition hover:border-white/24 focus:border-white/28"
-                      >
-                        <option value="">Unassigned</option>
-                        {DECK_ARCHETYPE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-	            </div>
-	            </div>
+		            </div>
+		            </div>
 
             <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 12 }, (_, index) => {

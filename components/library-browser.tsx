@@ -33,6 +33,12 @@ function sortCardsByMana(cards: LibraryCard[]): LibraryCard[] {
   });
 }
 
+function getActionLabelClass(active: boolean) {
+  return active
+    ? "text-white underline decoration-white underline-offset-2"
+    : "text-white/80 no-underline hover:text-white hover:underline hover:decoration-white hover:underline-offset-2";
+}
+
 function FilterChip({
   active,
   label,
@@ -67,20 +73,25 @@ type TileSelection =
 function LibraryCardTile({
   card,
   generatedCards,
+  sourceCards,
 }: {
   card: LibraryCard;
   generatedCards: LibraryCard[];
+  sourceCards: LibraryCard[];
 }) {
   const [selection, setSelection] = useState<TileSelection>(null);
   const hasLegendaryAbility =
     card.rarity === "Legendary" && Boolean(card.legendaryPower);
-  const hasSummons = generatedCards.length > 0;
-  const activeGeneratedCard =
-    selection?.type === "generated"
-      ? generatedCards.find((generatedCard) => generatedCard.name === selection.name) ?? null
+  const relatedCards = generatedCards.length > 0 ? generatedCards : sourceCards;
+  const hasRelatedCards = relatedCards.length > 0;
+  const activeGeneratedName =
+    selection?.type === "generated" ? selection.name : null;
+  const activeRelatedCard =
+    activeGeneratedName
+      ? relatedCards.find((relatedCard) => relatedCard.name === activeGeneratedName) ?? null
       : null;
   const showingAbility = selection?.type === "ability";
-  const visibleCard = activeGeneratedCard ?? card;
+  const visibleCard = activeRelatedCard ?? card;
 
   function toggleAbility() {
     setSelection((current) => (current?.type === "ability" ? null : { type: "ability" }));
@@ -95,7 +106,7 @@ function LibraryCardTile({
   }
 
   const actionButtonClass =
-    "shrink-0 whitespace-nowrap text-[13px] font-medium leading-none transition hover:text-white hover:underline hover:underline-offset-2";
+    "shrink-0 whitespace-nowrap text-[13px] font-medium leading-none transition";
   const abilityDescription = useMemo(() => {
     if (!card.legendaryPower) {
       return null;
@@ -127,24 +138,20 @@ function LibraryCardTile({
           return <span key={`${card.slug}-text-${index}`}>{part}</span>;
         }
 
-        const isActive = activeGeneratedCard?.name === generatedCard.name;
+        const isActive = activeGeneratedName === generatedCard.name;
 
         return (
           <button
             key={`${card.slug}-text-link-${generatedCard.slug}-${index}`}
             type="button"
             onClick={() => toggleGeneratedCard(generatedCard.name)}
-            className={`inline font-semibold transition hover:text-white hover:underline hover:underline-offset-2 ${
-              isActive
-                ? "text-white underline underline-offset-2"
-                : "text-white/86 underline underline-offset-2 decoration-white/35"
-            }`}
+            className={`inline font-semibold transition ${getActionLabelClass(isActive)}`}
           >
             {part}
           </button>
         );
       });
-  }, [activeGeneratedCard?.name, card.legendaryPower, card.slug, generatedCards]);
+  }, [activeGeneratedName, card.legendaryPower, card.slug, generatedCards]);
 
   return (
     <article className="space-y-2">
@@ -173,30 +180,26 @@ function LibraryCardTile({
         )}
       </div>
 
-      {hasLegendaryAbility || hasSummons ? (
-        <div className="flex items-center justify-center gap-2 overflow-x-auto text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {hasLegendaryAbility || hasRelatedCards ? (
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-1 text-center">
           {hasLegendaryAbility ? (
             <button
               type="button"
               onClick={toggleAbility}
-              className={`${actionButtonClass} ${
-                showingAbility ? "text-white underline underline-offset-2" : "text-white/80"
-              }`}
+              className={`${actionButtonClass} ${getActionLabelClass(showingAbility)}`}
             >
               Ability
             </button>
           ) : null}
-          {hasSummons ? (
-            generatedCards.map((generatedCard) => (
+          {hasRelatedCards ? (
+            relatedCards.map((generatedCard) => (
               <button
                 key={generatedCard.slug}
                 type="button"
                 onClick={() => toggleGeneratedCard(generatedCard.name)}
-                className={`${actionButtonClass} ${
-                  activeGeneratedCard?.name === generatedCard.name
-                    ? "text-white underline underline-offset-2"
-                    : "text-white/80"
-                }`}
+                className={`${actionButtonClass} ${getActionLabelClass(
+                  activeGeneratedName === generatedCard.name,
+                )}`}
               >
                 {generatedCard.name}
               </button>
@@ -212,10 +215,12 @@ function CardGridSection({
   title,
   cards,
   cardLookup,
+  sourceLookup,
 }: {
   title: LibrarySection;
   cards: LibraryCard[];
   cardLookup: Record<string, LibraryCard>;
+  sourceLookup: Record<string, LibraryCard[]>;
 }) {
   if (cards.length === 0) {
     return null;
@@ -244,12 +249,14 @@ function CardGridSection({
           const generatedCards = card.generatedCardNames
             .map((name) => cardLookup[name])
             .filter((generatedCard): generatedCard is LibraryCard => Boolean(generatedCard));
+          const sourceCards = sourceLookup[card.name] ?? [];
 
           return (
             <LibraryCardTile
               key={card.slug}
               card={card}
               generatedCards={generatedCards}
+              sourceCards={sourceCards}
             />
           );
         })}
@@ -325,6 +332,21 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
     () => Object.fromEntries(cards.map((card) => [card.name, card])),
     [cards],
   );
+  const sourceLookup = useMemo(() => {
+    const lookup = new Map<string, LibraryCard[]>();
+
+    cards.forEach((card) => {
+      card.generatedCardNames.forEach((generatedName) => {
+        const existingCards = lookup.get(generatedName) ?? [];
+        existingCards.push(card);
+        lookup.set(generatedName, existingCards);
+      });
+    });
+
+    return Object.fromEntries(
+      [...lookup.entries()].map(([name, sourceCards]) => [name, sortCardsByMana(sourceCards)]),
+    ) as Record<string, LibraryCard[]>;
+  }, [cards]);
 
   const sections = [
     {
@@ -504,13 +526,14 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
 
       <div className="space-y-10">
         {sections.map((section) => (
-          <CardGridSection
-            key={section.title}
-            title={section.title}
-            cards={section.cards}
-            cardLookup={cardLookup}
-          />
-        ))}
+        <CardGridSection
+          key={section.title}
+          title={section.title}
+          cards={section.cards}
+          cardLookup={cardLookup}
+          sourceLookup={sourceLookup}
+        />
+      ))}
         {filteredCards.length === 0 ? (
           <div className="rounded-[26px] border border-white/12 bg-[#1c1c1c] px-6 py-10 text-center text-white/70">
             No cards match the current filters.
