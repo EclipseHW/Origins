@@ -388,7 +388,7 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search cards by effects or keywords..."
+              placeholder="Search cards..."
               className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
             />
             <div className="flex items-center">

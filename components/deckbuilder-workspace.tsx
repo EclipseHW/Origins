@@ -134,6 +134,16 @@ function formatDeckName(name: string): string {
   return name.trim() || "Untitled Deck";
 }
 
+function formatDeckNameLabel(name: string): string {
+  const formattedName = formatDeckName(name);
+
+  if (formattedName.length <= 20) {
+    return formattedName;
+  }
+
+  return `${formattedName.slice(0, 17)}...`;
+}
+
 function createDeckId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -420,22 +430,22 @@ function DeckListCard({
           onSelect();
         }
       }}
-      className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 shadow-[0_16px_28px_rgba(0,0,0,0.18)] transition ${
+      className={`flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-[18px] border px-2.5 py-2.5 shadow-[0_16px_28px_rgba(0,0,0,0.18)] transition sm:gap-3 sm:px-3 ${
         selected
           ? "border-[#e0c15a] bg-[linear-gradient(135deg,#231e12_0%,#17130d_100%)] shadow-[0_18px_30px_rgba(0,0,0,0.24),inset_0_0_0_1px_rgba(224,193,90,0.18)]"
           : "border-[#2a2a2a] bg-[linear-gradient(135deg,#1d1f26_0%,#14161c_100%)] hover:border-[#343844]"
       }`}
       aria-label={editing ? undefined : `Open ${formatDeckName(deck.deckName)}`}
     >
-	      <div className="relative h-[62px] w-[46px] shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)]">
-        {previewCard ? (
-          <Image
-            src={`/${previewCard.artPath}`}
-            alt={previewCard.name}
-            fill
-            sizes="46px"
-            className="object-cover"
-          />
+	      <div className="relative h-[54px] w-[40px] shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#171717] shadow-[0_10px_18px_rgba(0,0,0,0.24)] sm:h-[62px] sm:w-[46px]">
+	        {previewCard ? (
+	          <Image
+	            src={`/${previewCard.artPath}`}
+	            alt={previewCard.name}
+	            fill
+	            sizes="(max-width: 640px) 40px, 46px"
+	            className="object-cover"
+	          />
         ) : (
           <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),rgba(255,255,255,0)_58%),linear-gradient(180deg,#1d1d1d_0%,#121212_100%)]" />
         )}
@@ -459,11 +469,11 @@ function DeckListCard({
             }}
             placeholder="Deck name"
             autoFocus
-            className="w-full border-none bg-transparent px-0 py-0 text-[1.08rem] font-semibold text-white outline-none placeholder:text-white/28"
+            className="w-full border-none bg-transparent px-0 py-0 text-sm font-semibold text-white outline-none placeholder:text-white/28 sm:text-[1.08rem]"
           />
         ) : (
-          <p className="truncate text-[1.08rem] font-semibold tracking-tight text-white">
-            {formatDeckName(deck.deckName)}
+          <p className="truncate text-sm font-semibold tracking-tight text-white sm:text-[1.08rem]">
+            {formatDeckNameLabel(deck.deckName)}
           </p>
         )}
       </div>
@@ -1895,7 +1905,7 @@ export function DeckbuilderWorkspace({
                     type="search"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search cards, effects, or keywords"
+                    placeholder="Search cards..."
                     className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
                   />
                   <div className="flex items-center">
