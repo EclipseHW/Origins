@@ -16,8 +16,16 @@ const nunitoSans = Nunito_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Origins Deckbuilder",
-  description: "A Next.js deckbuilder scaffold with Convex and Clerk auth.",
+  title: "Origins Base",
+  description: "Explore cards, build and find best decks",
+  openGraph: {
+    title: "Origins Base",
+    description: "Explore cards, build and find best decks",
+  },
+  twitter: {
+    title: "Origins Base",
+    description: "Explore cards, build and find best decks",
+  },
 };
 
 export default function RootLayout({
