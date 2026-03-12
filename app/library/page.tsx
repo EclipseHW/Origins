@@ -1,8 +1,5 @@
-import { LibraryBrowser } from "@/components/library-browser";
-import { getLibraryCards } from "@/lib/library-data";
+import { redirect } from "next/navigation";
 
 export default function LibraryPage() {
-  const cards = getLibraryCards();
-
-  return <LibraryBrowser cards={cards} />;
+  redirect("/library/cards");
 }

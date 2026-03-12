@@ -65,7 +65,10 @@ export function SiteHeader() {
 
           <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:absolute md:left-1/2 md:flex md:-translate-x-1/2">
             {tabs.map((tab) => {
-              const isActive = pathname === tab.href;
+              const isActive =
+                tab.href === "/library"
+                  ? pathname === "/library" || pathname.startsWith("/library/")
+                  : pathname === tab.href;
 
               return (
                 <Link
@@ -85,7 +88,10 @@ export function SiteHeader() {
 
           <nav className="absolute left-[calc(50%+2.25rem)] flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:hidden">
             {tabs.map((tab) => {
-              const isActive = pathname === tab.href;
+              const isActive =
+                tab.href === "/library"
+                  ? pathname === "/library" || pathname.startsWith("/library/")
+                  : pathname === tab.href;
               const Icon = tab.icon;
 
               return (
@@ -105,7 +111,7 @@ export function SiteHeader() {
             })}
           </nav>
 
-          <div className="flex w-[5rem] shrink-0 items-center justify-end gap-2 sm:w-[14rem] sm:gap-3">
+          <div className="flex w-20 shrink-0 items-center justify-end gap-2 sm:w-56 sm:gap-3">
             {!isLoaded ? (
               <>
                 <span aria-hidden="true" className="hidden h-8 w-32 sm:inline-flex" />

@@ -12,6 +12,9 @@ import {
   type LibraryCard,
   type LibrarySection,
 } from "@/lib/library-types";
+import { locations, type LocationDefinition } from "@/lib/locations";
+
+type ActiveTab = "cards" | "locations";
 
 function toggleValue<T extends string>(items: T[], value: T): T[] {
   return items.includes(value)
@@ -39,6 +42,58 @@ function getActionLabelClass(active: boolean) {
     : "text-white/80 no-underline hover:text-white hover:underline hover:decoration-white hover:underline-offset-2";
 }
 
+// ---------------------------------------------------------------------------
+// Rich-text parser for location effects (Unity-style <b> and <color=...> tags)
+// ---------------------------------------------------------------------------
+
+function parseLocationEffect(effect: string): React.ReactNode[] {
+  const tokens: React.ReactNode[] = [];
+  const regex = /<b>|<\/b>|<color=(#?\w+)>|<\/color>/g;
+  let lastIndex = 0;
+  let bold = false;
+  let color: string | null = null;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(effect)) !== null) {
+    if (match.index > lastIndex) {
+      const text = effect.slice(lastIndex, match.index);
+      tokens.push(
+        <span
+          key={lastIndex}
+          style={{ color: color ?? undefined }}
+          className={bold ? "font-semibold" : ""}
+        >
+          {text}
+        </span>,
+      );
+    }
+    lastIndex = regex.lastIndex;
+
+    if (match[0] === "<b>") bold = true;
+    else if (match[0] === "</b>") bold = false;
+    else if (match[0] === "</color>") color = null;
+    else if (match[1]) color = match[1] === "red" ? "#ef4444" : match[1];
+  }
+
+  if (lastIndex < effect.length) {
+    tokens.push(
+      <span
+        key={lastIndex}
+        style={{ color: color ?? undefined }}
+        className={bold ? "font-semibold" : ""}
+      >
+        {effect.slice(lastIndex)}
+      </span>,
+    );
+  }
+
+  return tokens;
+}
+
+// ---------------------------------------------------------------------------
+// Shared UI components
+// ---------------------------------------------------------------------------
+
 function FilterChip({
   active,
   label,
@@ -64,6 +119,57 @@ function FilterChip({
     </button>
   );
 }
+
+function TabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3.5 py-1 text-xs font-semibold transition ${
+        active
+          ? "bg-white text-black"
+          : "text-white/60 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Location row
+// ---------------------------------------------------------------------------
+
+function LocationTile({ location }: { location: LocationDefinition }) {
+  return (
+    <article>
+      <div className="relative aspect-275/400 overflow-hidden rounded-[18px] shadow-[0_22px_40px_rgba(0,0,0,0.42)]">
+        <div className="flex h-full flex-col rounded-[18px] bg-[#1c1c1c] px-5 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <div className="space-y-2">
+            <p className="text-xl font-semibold text-white">
+              {location.name}
+            </p>
+            <p className="text-sm leading-6 text-white/82">
+              {parseLocationEffect(location.effect)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card tile (unchanged from original)
+// ---------------------------------------------------------------------------
 
 type TileSelection =
   | { type: "ability" }
@@ -211,6 +317,10 @@ function LibraryCardTile({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Card grid section
+// ---------------------------------------------------------------------------
+
 function CardGridSection({
   title,
   cards,
@@ -265,7 +375,47 @@ function CardGridSection({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Locations list
+// ---------------------------------------------------------------------------
+
+function LocationsList({ query }: { query: string }) {
+  const filteredLocations = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (normalizedQuery.length === 0) {
+      return locations;
+    }
+
+    return locations.filter((location) => {
+      const searchable = `${location.name} ${location.effect}`.toLowerCase();
+      return searchable.includes(normalizedQuery);
+    });
+  }, [query]);
+
+  if (filteredLocations.length === 0) {
+    return (
+      <div className="rounded-[26px] border border-white/12 bg-[#1c1c1c] px-6 py-10 text-center text-white/70">
+        No locations match your search.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      {filteredLocations.map((location) => (
+        <LocationTile key={location.name} location={location} />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main browser
+// ---------------------------------------------------------------------------
+
 export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("cards");
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeKinds, setActiveKinds] = useState<FilterCardKind[]>([
@@ -384,25 +534,43 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
       <div className="space-y-4">
         <div className="overflow-hidden rounded-[24px] border border-white/12 bg-[#1c1c1c] shadow-[0_22px_44px_rgba(0,0,0,0.32)] ring-1 ring-white/5">
           <div className="flex items-center gap-3 px-4 py-2.5">
+            {/* Tab switcher */}
+            <div className="flex shrink-0 rounded-full border border-white/10 bg-[#181818] p-0.5">
+              <TabButton
+                active={activeTab === "cards"}
+                label="Cards"
+                onClick={() => setActiveTab("cards")}
+              />
+              <TabButton
+                active={activeTab === "locations"}
+                label="Locations"
+                onClick={() => setActiveTab("locations")}
+              />
+            </div>
+
             <input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search cards..."
+              placeholder={activeTab === "cards" ? "Search cards..." : "Search locations..."}
               className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
             />
-            <div className="flex items-center">
-              <button
-                type="button"
-                onClick={() => setFiltersOpen((open) => !open)}
-                className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
-              >
-                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-              </button>
-            </div>
+
+            {/* Filters button — only show for cards tab */}
+            {activeTab === "cards" ? (
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((open) => !open)}
+                  className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
+                >
+                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          {filtersOpen ? (
+          {filtersOpen && activeTab === "cards" ? (
             <div className="border-t border-white/10 bg-[#1c1c1c] px-4 pb-3.5 pt-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
@@ -527,22 +695,27 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
         </div>
       </div>
 
-      <div className="space-y-10">
-        {sections.map((section) => (
-        <CardGridSection
-          key={section.title}
-          title={section.title}
-          cards={section.cards}
-          cardLookup={cardLookup}
-          sourceLookup={sourceLookup}
-        />
-      ))}
-        {filteredCards.length === 0 ? (
-          <div className="rounded-[26px] border border-white/12 bg-[#1c1c1c] px-6 py-10 text-center text-white/70">
-            No cards match the current filters.
-          </div>
-        ) : null}
-      </div>
+      {/* Content */}
+      {activeTab === "cards" ? (
+        <div className="space-y-10">
+          {sections.map((section) => (
+            <CardGridSection
+              key={section.title}
+              title={section.title}
+              cards={section.cards}
+              cardLookup={cardLookup}
+              sourceLookup={sourceLookup}
+            />
+          ))}
+          {filteredCards.length === 0 ? (
+            <div className="rounded-[26px] border border-white/12 bg-[#1c1c1c] px-6 py-10 text-center text-white/70">
+              No cards match the current filters.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <LocationsList query={query} />
+      )}
     </section>
   );
 }
