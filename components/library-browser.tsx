@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useMemo, useState } from "react";
+import { ListFilter } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import {
   ALIGNMENT_OPTIONS,
@@ -150,14 +151,14 @@ function TabButton({
 
 function LocationTile({ location }: { location: LocationDefinition }) {
   return (
-    <article>
-      <div className="relative aspect-275/400 overflow-hidden rounded-[18px] shadow-[0_22px_40px_rgba(0,0,0,0.42)]">
+    <article className="h-full">
+      <div className="relative h-full min-h-72 overflow-hidden rounded-[18px] shadow-[0_22px_40px_rgba(0,0,0,0.42)]">
         <div className="flex h-full flex-col rounded-[18px] bg-[#1c1c1c] px-5 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           <div className="space-y-2">
-            <p className="text-xl font-semibold text-white">
+            <p className="text-lg font-semibold text-white sm:text-xl">
               {location.name}
             </p>
-            <p className="text-sm leading-6 text-white/82">
+            <p className="text-xs leading-5 text-white/82 sm:text-sm sm:leading-6">
               {parseLocationEffect(location.effect)}
             </p>
           </div>
@@ -553,18 +554,24 @@ export function LibraryBrowser({ cards }: { cards: LibraryCard[] }) {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={activeTab === "cards" ? "Search cards..." : "Search locations..."}
-              className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
+              className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
             />
 
             {/* Filters button — only show for cards tab */}
             {activeTab === "cards" ? (
-              <div className="flex items-center">
+              <div className="flex shrink-0 items-center">
                 <button
                   type="button"
                   onClick={() => setFiltersOpen((open) => !open)}
-                  className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
+                  aria-label="Filter cards"
+                  className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/14 bg-[#202020] text-white transition hover:border-white/28 hover:bg-[#252525]"
                 >
-                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  <ListFilter size={16} strokeWidth={2.2} />
+                  {activeFilterCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-none text-black">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
                 </button>
               </div>
             ) : null}

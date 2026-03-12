@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Copy,
   Download,
+  ListFilter,
   Pencil,
   Save,
   Trash2,
@@ -1908,15 +1909,21 @@ export function DeckbuilderWorkspace({
                     placeholder="Search cards..."
                     className="h-9 flex-1 bg-transparent px-2 text-sm text-white outline-none placeholder:text-white/32"
                   />
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => setFiltersOpen((open) => !open)}
-                      className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/14 bg-[#202020] px-4 text-sm font-semibold text-white transition hover:border-white/28 hover:bg-[#252525]"
-                    >
-                      Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-                    </button>
-                  </div>
+	                  <div className="flex items-center">
+	                    <button
+	                      type="button"
+	                      onClick={() => setFiltersOpen((open) => !open)}
+	                      aria-label="Filter cards"
+	                      className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/14 bg-[#202020] text-white transition hover:border-white/28 hover:bg-[#252525]"
+	                    >
+	                      <ListFilter size={16} strokeWidth={2.2} />
+	                      {activeFilterCount > 0 ? (
+	                        <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-none text-black">
+	                          {activeFilterCount}
+	                        </span>
+	                      ) : null}
+	                    </button>
+	                  </div>
                 </div>
 
                 {filtersOpen ? (

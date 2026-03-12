@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { Check, Copy, Hammer, Share2 } from "lucide-react";
+import { Check, Copy, Hammer, ListFilter, Share2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cardsBySlug, type CardDefinition } from "@/lib/cards";
@@ -373,10 +373,15 @@ export function PublishedDecksBrowser({
               <button
                 type="button"
                 onClick={() => setFiltersOpen((open) => !open)}
-                className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-full border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-[#222222]"
+                aria-label="Filter decks"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#1a1a1a] text-white transition hover:border-white/20 hover:bg-[#222222]"
               >
-                Filters
-                {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                <ListFilter size={16} strokeWidth={2.2} />
+                {activeFilterCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-none text-black">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
               </button>
             </div>
           </div>
