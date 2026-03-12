@@ -29,7 +29,7 @@ function resolveDisplayName(user: {
   fullName?: string | null;
   firstName?: string | null;
   primaryEmailAddress?: { emailAddress?: string | null } | null;
-} | null) {
+} | null | undefined) {
   return (
     (user?.username ? capitalizeFirstLetter(user.username) : null) ??
     user?.fullName ??
