@@ -24,20 +24,30 @@ function capitalizeFirstLetter(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function SiteHeader() {
-  const pathname = usePathname();
-  const { isLoaded, isSignedIn, user } = useUser();
-  const displayName =
+function resolveDisplayName(user: {
+  username?: string | null;
+  fullName?: string | null;
+  firstName?: string | null;
+  primaryEmailAddress?: { emailAddress?: string | null } | null;
+} | null) {
+  return (
     (user?.username ? capitalizeFirstLetter(user.username) : null) ??
     user?.fullName ??
     user?.firstName ??
     user?.primaryEmailAddress?.emailAddress ??
-    "Account";
+    "Account"
+  );
+}
+
+export function SiteHeader() {
+  const pathname = usePathname();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const displayName = resolveDisplayName(user);
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#1a1a1a]/96 shadow-[0_18px_42px_rgba(0,0,0,0.36)] ring-1 ring-inset ring-white/5 backdrop-blur-2xl">
       <div className="w-full px-4 py-3 sm:px-6 sm:py-4">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 md:flex md:items-center md:justify-between">
+        <div className="relative flex items-center justify-between gap-3">
           <Link
             href="/library"
             className="flex min-w-0 items-center gap-2 text-lg font-bold tracking-[0.08em] text-white sm:text-xl"
@@ -53,7 +63,7 @@ export function SiteHeader() {
             <span className="leading-none">rigins Base</span>
           </Link>
 
-          <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:flex">
+          <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:absolute md:left-1/2 md:flex md:-translate-x-1/2">
             {tabs.map((tab) => {
               const isActive = pathname === tab.href;
 
@@ -73,7 +83,7 @@ export function SiteHeader() {
             })}
           </nav>
 
-          <nav className="flex items-center gap-1 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:hidden">
+          <nav className="absolute left-[calc(50%+2.25rem)] flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-[#202020] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:hidden">
             {tabs.map((tab) => {
               const isActive = pathname === tab.href;
               const Icon = tab.icon;
@@ -95,13 +105,27 @@ export function SiteHeader() {
             })}
           </nav>
 
-          <div className="flex shrink-0 items-center justify-self-end gap-2 sm:gap-3">
-            {!isLoaded ? null : isSignedIn ? (
+          <div className="flex w-[5rem] shrink-0 items-center justify-end gap-2 sm:w-[14rem] sm:gap-3">
+            {!isLoaded ? (
               <>
-                <span className="hidden max-w-40 truncate rounded-full border border-white/10 bg-[#202020] px-3 py-1.5 text-sm font-medium text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:inline-flex">
+                <span aria-hidden="true" className="hidden h-8 w-32 sm:inline-flex" />
+                <span aria-hidden="true" className="h-8 w-8 shrink-0" />
+              </>
+            ) : isSignedIn ? (
+              <>
+                <span className="hidden h-8 max-w-40 items-center truncate rounded-full border border-white/10 bg-[#202020] px-3 text-sm font-medium text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:inline-flex">
                   {displayName}
                 </span>
-                <UserButton />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        avatarBox: "h-8 w-8",
+                        userButtonTrigger: "h-8 w-8",
+                      },
+                    }}
+                  />
+                </div>
               </>
             ) : (
               <SignInButton mode="modal">
