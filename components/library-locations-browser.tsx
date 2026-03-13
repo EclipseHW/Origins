@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { LibraryViewSwitcher } from "@/components/library-view-switcher";
-import { locations, type LocationDefinition } from "@/lib/locations";
+import { locations, sortLocationsByName, type LocationDefinition } from "@/lib/locations";
 
 function parseLocationEffect(effect: string): ReactNode[] {
   const tokens: ReactNode[] = [];
@@ -71,13 +71,15 @@ export function LibraryLocationsBrowser() {
     const normalizedQuery = query.trim().toLowerCase();
 
     if (normalizedQuery.length === 0) {
-      return locations;
+      return sortLocationsByName(locations);
     }
 
-    return locations.filter((location) => {
-      const searchable = `${location.name} ${location.effect}`.toLowerCase();
-      return searchable.includes(normalizedQuery);
-    });
+    return sortLocationsByName(
+      locations.filter((location) => {
+        const searchable = `${location.name} ${location.effect}`.toLowerCase();
+        return searchable.includes(normalizedQuery);
+      }),
+    );
   }, [query]);
 
   return (

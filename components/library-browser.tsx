@@ -13,7 +13,7 @@ import {
   type LibraryCard,
   type LibrarySection,
 } from "@/lib/library-types";
-import { locations, type LocationDefinition } from "@/lib/locations";
+import { locations, sortLocationsByName, type LocationDefinition } from "@/lib/locations";
 
 type ActiveTab = "cards" | "locations";
 
@@ -91,6 +91,35 @@ function parseLocationEffect(effect: string): React.ReactNode[] {
   return tokens;
 }
 
+function getLocationAccent(effect: string): string {
+  const normalizedEffect = effect.toLowerCase();
+
+  if (
+    normalizedEffect.includes("damage") ||
+    normalizedEffect.includes("destroy") ||
+    normalizedEffect.includes("ruin")
+  ) {
+    return "border-l-red-500/40";
+  }
+
+  if (
+    effect.includes("+") &&
+    (normalizedEffect.includes("power") || normalizedEffect.includes("health"))
+  ) {
+    return "border-l-[#ffc829]/40";
+  }
+
+  if (
+    normalizedEffect.includes("cost") ||
+    normalizedEffect.includes("mana") ||
+    normalizedEffect.includes("draw")
+  ) {
+    return "border-l-[#01CE73]/40";
+  }
+
+  return "border-l-white/10";
+}
+
 // ---------------------------------------------------------------------------
 // Shared UI components
 // ---------------------------------------------------------------------------
@@ -150,19 +179,19 @@ function TabButton({
 // ---------------------------------------------------------------------------
 
 function LocationTile({ location }: { location: LocationDefinition }) {
+  const accent = getLocationAccent(location.effect);
+
   return (
-    <article className="h-full">
-      <div className="relative h-full min-h-72 overflow-hidden rounded-[18px] shadow-[0_22px_40px_rgba(0,0,0,0.42)]">
-        <div className="flex h-full flex-col rounded-[18px] bg-[#1c1c1c] px-5 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-          <div className="space-y-2">
-            <p className="text-lg font-semibold text-white sm:text-xl">
-              {location.name}
-            </p>
-            <p className="text-xs leading-5 text-white/82 sm:text-sm sm:leading-6">
-              {parseLocationEffect(location.effect)}
-            </p>
-          </div>
-        </div>
+    <article
+      className={`group relative overflow-hidden rounded-xl border-l-2 bg-[#171717] transition hover:bg-[#1e1e1e] ${accent}`}
+    >
+      <div className="px-3.5 py-3.5">
+        <p className="text-[0.82rem] font-bold leading-tight tracking-tight text-white">
+          {location.name}
+        </p>
+        <p className="mt-1.5 text-[0.76rem] leading-[1.6] text-white/72">
+          {parseLocationEffect(location.effect)}
+        </p>
       </div>
     </article>
   );
@@ -385,13 +414,15 @@ function LocationsList({ query }: { query: string }) {
     const normalizedQuery = query.trim().toLowerCase();
 
     if (normalizedQuery.length === 0) {
-      return locations;
+      return sortLocationsByName(locations);
     }
 
-    return locations.filter((location) => {
-      const searchable = `${location.name} ${location.effect}`.toLowerCase();
-      return searchable.includes(normalizedQuery);
-    });
+    return sortLocationsByName(
+      locations.filter((location) => {
+        const searchable = `${location.name} ${location.effect}`.toLowerCase();
+        return searchable.includes(normalizedQuery);
+      }),
+    );
   }, [query]);
 
   if (filteredLocations.length === 0) {
@@ -403,7 +434,7 @@ function LocationsList({ query }: { query: string }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {filteredLocations.map((location) => (
         <LocationTile key={location.name} location={location} />
       ))}

@@ -3,6 +3,26 @@ export type LocationDefinition = {
   effect: string;
 };
 
+function getLocationSortName(name: string): string {
+  return name.replace(/^[^A-Za-z0-9]+/, "");
+}
+
+export function sortLocationsByName(items: LocationDefinition[]): LocationDefinition[] {
+  return [...items].sort((left, right) => {
+    const normalizedComparison = getLocationSortName(left.name).localeCompare(
+      getLocationSortName(right.name),
+      undefined,
+      { sensitivity: "base" },
+    );
+
+    if (normalizedComparison !== 0) {
+      return normalizedComparison;
+    }
+
+    return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+  });
+}
+
 export const locations: LocationDefinition[] = [
   { name: "Ruins", effect: "This location has no effects." },
   { name: "Alchemical Fallout", effect: "Ruin one of the other locations after round 4." },
