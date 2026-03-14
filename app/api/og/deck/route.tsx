@@ -20,8 +20,8 @@ function DeckCardImage({
     <div
       style={{
         display: "flex",
-        width: 162,
-        height: 236,
+        width: 181,
+        height: 264,
         overflow: "hidden",
         borderRadius: 6,
         border: `1px solid ${borderColor}`,
@@ -70,10 +70,10 @@ function DeckPreviewImage({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 8,
+          gap: 4,
         }}
       >
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 4 }}>
           {firstRow.map((card, index) => (
             <DeckCardImage
               key={`first-row-${index}`}
@@ -82,7 +82,7 @@ function DeckPreviewImage({
             />
           ))}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 4 }}>
           {secondRow.map((card, index) => (
             <DeckCardImage
               key={`second-row-${index}`}
