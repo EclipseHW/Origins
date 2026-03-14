@@ -1,13 +1,8 @@
 import { ImageResponse } from "next/og";
-import { getDeckShareCards } from "@/lib/deck-share";
+import { DECK_SHARE_IMAGE_SIZE, getDeckShareCards } from "@/lib/deck-share";
 import { getPublishedDeckByParam } from "@/lib/published-decks";
 
 export const runtime = "nodejs";
-
-const IMAGE_SIZE = {
-  width: 1200,
-  height: 630,
-} as const;
 
 function DeckCardImage({
   artUrl,
@@ -122,7 +117,7 @@ export async function GET(request: Request) {
           Origins Base
         </div>
       ),
-      IMAGE_SIZE,
+      DECK_SHARE_IMAGE_SIZE,
     );
   }
 
@@ -136,6 +131,6 @@ export async function GET(request: Request) {
     (
       <DeckPreviewImage cardImageUrls={cardImageUrls} />
     ),
-    IMAGE_SIZE,
+    DECK_SHARE_IMAGE_SIZE,
   );
 }

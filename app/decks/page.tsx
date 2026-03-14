@@ -2,7 +2,11 @@ import { fetchQuery } from "convex/nextjs";
 import type { Metadata } from "next";
 import { PublishedDecksBrowser } from "@/components/published-decks-browser";
 import { api } from "@/convex/_generated/api";
-import { getDeckShareImageUrl, getDeckShareTitle } from "@/lib/deck-share";
+import {
+  DECK_SHARE_IMAGE_SIZE,
+  getDeckShareImageUrl,
+  getDeckShareTitle,
+} from "@/lib/deck-share";
 import type { DeckRecord } from "@/lib/deck-types";
 import { getPublishedDeckByParam } from "@/lib/published-decks";
 
@@ -37,8 +41,8 @@ export async function generateMetadata({
       images: [
         {
           url: imageUrl,
-          width: 1200,
-          height: 630,
+          width: DECK_SHARE_IMAGE_SIZE.width,
+          height: DECK_SHARE_IMAGE_SIZE.height,
           alt: `${sharedDeck.deckName || "Untitled Deck"} deck preview`,
         },
       ],

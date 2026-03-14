@@ -2,6 +2,11 @@ import { cardsBySlug, type CardDefinition } from "@/lib/cards";
 import type { DeckRecord } from "@/lib/deck-types";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
+export const DECK_SHARE_IMAGE_SIZE = {
+  width: 1200,
+  height: 496,
+} as const;
+
 type DeckShareCard = {
   slug: string;
   card: CardDefinition | null;
