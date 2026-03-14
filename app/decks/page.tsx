@@ -2,11 +2,7 @@ import { fetchQuery } from "convex/nextjs";
 import type { Metadata } from "next";
 import { PublishedDecksBrowser } from "@/components/published-decks-browser";
 import { api } from "@/convex/_generated/api";
-import {
-  getDeckShareDescription,
-  getDeckShareImageUrl,
-  getDeckShareTitle,
-} from "@/lib/deck-share";
+import { getDeckShareImageUrl, getDeckShareTitle } from "@/lib/deck-share";
 import type { DeckRecord } from "@/lib/deck-types";
 import { getPublishedDeckByParam } from "@/lib/published-decks";
 
@@ -29,15 +25,14 @@ export async function generateMetadata({
 
   const imageUrl = getDeckShareImageUrl(sharedDeck._id);
   const title = getDeckShareTitle(sharedDeck);
-  const description = getDeckShareDescription(sharedDeck);
   const url = `/decks?deck=${encodeURIComponent(sharedDeck._id)}`;
 
   return {
     title,
-    description,
+    description: "",
     openGraph: {
       title,
-      description,
+      description: "",
       url,
       images: [
         {
@@ -51,7 +46,7 @@ export async function generateMetadata({
     twitter: {
       card: "summary_large_image",
       title,
-      description,
+      description: "",
       images: [imageUrl],
     },
   };

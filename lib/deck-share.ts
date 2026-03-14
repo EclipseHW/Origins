@@ -8,22 +8,6 @@ type DeckShareCard = {
   isLegendary: boolean;
 };
 
-export function formatDeckPublisherHandle(deck: DeckRecord) {
-  return deck.publisherName ?? deck.publisherUsername ?? "Unknown";
-}
-
-export function formatDeckPublishedAt(timestamp: number | null) {
-  if (!timestamp) {
-    return "Unpublished";
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(timestamp);
-}
-
 export function getDeckShareCards(deck: DeckRecord): DeckShareCard[] {
   const legendaryCard = deck.legendarySlug
     ? cardsBySlug[deck.legendarySlug] ?? null
@@ -48,28 +32,6 @@ export function getDeckShareCards(deck: DeckRecord): DeckShareCard[] {
 
 export function getDeckShareTitle(deck: DeckRecord): string {
   return `${deck.deckName || "Untitled Deck"} | Origins Base`;
-}
-
-export function getDeckShareDescription(deck: DeckRecord): string {
-  const legendaryName = deck.legendarySlug
-    ? cardsBySlug[deck.legendarySlug]?.name ?? null
-    : null;
-
-  return [
-    deck.archetype,
-    legendaryName ? `Legendary: ${legendaryName}` : null,
-    `Published by ${formatDeckPublisherHandle(deck)}`,
-  ]
-    .filter(Boolean)
-    .join(" | ");
-}
-
-export function getDeckShareMetaParts(deck: DeckRecord): string[] {
-  return [
-    `Published by ${formatDeckPublisherHandle(deck)}`,
-    formatDeckPublishedAt(deck.publishedAt),
-    deck.archetype,
-  ].filter((part): part is string => Boolean(part));
 }
 
 export function getDeckShareImageUrl(deckId: string): string {

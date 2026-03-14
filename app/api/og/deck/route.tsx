@@ -20,26 +20,28 @@ function DeckCardImage({
     <div
       style={{
         display: "flex",
-        width: 148,
-        height: 216,
+        width: 162,
+        height: 236,
         overflow: "hidden",
         borderRadius: 6,
         border: `1px solid ${borderColor}`,
         background: "#1a1a1a",
       }}
-	    >
-	      {artUrl ? (
-	        // next/image is not supported inside next/og ImageResponse markup.
-	        // eslint-disable-next-line @next/next/no-img-element
-	        <img
-	          src={artUrl}
-	          alt=""
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
+    >
+      {artUrl ? (
+        <>
+          {/* next/image is not supported inside next/og ImageResponse markup. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={artUrl}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        </>
       ) : null}
     </div>
   );
@@ -59,51 +61,35 @@ function DeckPreviewImage({
         display: "flex",
         width: "100%",
         height: "100%",
-        background: "#0f0f10",
-        padding: 36,
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#141414",
       }}
     >
       <div
         style={{
           display: "flex",
-          width: "100%",
-          height: "100%",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-          borderRadius: 16,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "#141414",
-          boxShadow: "0 16px 32px rgba(0,0,0,0.2)",
-          padding: 24,
+          gap: 8,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            {firstRow.map((card, index) => (
-              <DeckCardImage
-                key={`first-row-${index}`}
-                artUrl={card.url}
-                borderColor={card.isLegendary ? "rgba(224,193,90,0.4)" : "rgba(255,255,255,0.06)"}
-              />
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {secondRow.map((card, index) => (
-              <DeckCardImage
-                key={`second-row-${index}`}
-                artUrl={card.url}
-                borderColor={card.isLegendary ? "rgba(224,193,90,0.4)" : "rgba(255,255,255,0.06)"}
-              />
-            ))}
-          </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {firstRow.map((card, index) => (
+            <DeckCardImage
+              key={`first-row-${index}`}
+              artUrl={card.url}
+              borderColor={card.isLegendary ? "rgba(224,193,90,0.4)" : "rgba(255,255,255,0.06)"}
+            />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {secondRow.map((card, index) => (
+            <DeckCardImage
+              key={`second-row-${index}`}
+              artUrl={card.url}
+              borderColor={card.isLegendary ? "rgba(224,193,90,0.4)" : "rgba(255,255,255,0.06)"}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -125,7 +111,7 @@ export async function GET(request: Request) {
             height: "100%",
             alignItems: "center",
             justifyContent: "center",
-            background: "#0f0f10",
+            background: "#141414",
             color: "#ffffff",
             fontSize: 48,
             fontWeight: 700,
@@ -148,9 +134,7 @@ export async function GET(request: Request) {
 
   return new ImageResponse(
     (
-      <DeckPreviewImage
-        cardImageUrls={cardImageUrls}
-      />
+      <DeckPreviewImage cardImageUrls={cardImageUrls} />
     ),
     IMAGE_SIZE,
   );
