@@ -3,8 +3,8 @@ import type { DeckRecord } from "@/lib/deck-types";
 import { getAbsoluteSiteUrl } from "@/lib/site-url";
 
 export const DECK_SHARE_IMAGE_SIZE = {
-  width: 1200,
-  height: 496,
+  width: 1280,
+  height: 965,
 } as const;
 
 type DeckShareCard = {
