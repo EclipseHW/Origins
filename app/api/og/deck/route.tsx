@@ -1,9 +1,5 @@
 import { ImageResponse } from "next/og";
-import {
-  getDeckShareCards,
-  getDeckShareDescription,
-  getDeckShareMetaParts,
-} from "@/lib/deck-share";
+import { getDeckShareCards } from "@/lib/deck-share";
 import { getPublishedDeckByParam } from "@/lib/published-decks";
 
 export const runtime = "nodejs";
@@ -24,18 +20,20 @@ function DeckCardImage({
     <div
       style={{
         display: "flex",
-        width: 136,
-        height: 198,
+        width: 148,
+        height: 216,
         overflow: "hidden",
         borderRadius: 6,
         border: `1px solid ${borderColor}`,
         background: "#1a1a1a",
       }}
-    >
-      {artUrl ? (
-        <img
-          src={artUrl}
-          alt=""
+	    >
+	      {artUrl ? (
+	        // next/image is not supported inside next/og ImageResponse markup.
+	        // eslint-disable-next-line @next/next/no-img-element
+	        <img
+	          src={artUrl}
+	          alt=""
           style={{
             width: "100%",
             height: "100%",
@@ -48,14 +46,8 @@ function DeckCardImage({
 }
 
 function DeckPreviewImage({
-  deckName,
-  metaParts,
-  description,
   cardImageUrls,
 }: {
-  deckName: string;
-  metaParts: string[];
-  description: string;
   cardImageUrls: Array<{ url: string | null; isLegendary: boolean }>;
 }) {
   const firstRow = cardImageUrls.slice(0, 7);
@@ -69,9 +61,6 @@ function DeckPreviewImage({
         height: "100%",
         background: "#0f0f10",
         padding: 36,
-        color: "#ffffff",
-        fontFamily:
-          '"Nunito Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
       <div
@@ -80,6 +69,8 @@ function DeckPreviewImage({
           width: "100%",
           height: "100%",
           flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
           overflow: "hidden",
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.08)",
@@ -88,72 +79,6 @@ function DeckPreviewImage({
           padding: 24,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            width: "100%",
-            flexDirection: "column",
-            gap: 10,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              width: "100%",
-              alignItems: "center",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                fontSize: 30,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              {deckName}
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              fontSize: 18,
-              fontWeight: 700,
-              lineHeight: 1.2,
-              color: "rgba(255,255,255,0.8)",
-            }}
-          >
-            {metaParts.map((part, index) => (
-              <div
-                key={`${part}-${index}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  marginRight: 10,
-                }}
-              >
-                {index > 0 ? (
-                  <span style={{ marginRight: 10, color: "rgba(255,255,255,0.55)" }}>|</span>
-                ) : null}
-                <span>{part}</span>
-              </div>
-            ))}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              fontSize: 16,
-              lineHeight: 1.35,
-              color: "rgba(255,255,255,0.62)",
-            }}
-          >
-            {description}
-          </div>
-        </div>
-
         <div
           style={{
             display: "flex",
@@ -224,9 +149,6 @@ export async function GET(request: Request) {
   return new ImageResponse(
     (
       <DeckPreviewImage
-        deckName={deck.deckName || "Untitled Deck"}
-        metaParts={getDeckShareMetaParts(deck)}
-        description={getDeckShareDescription(deck)}
         cardImageUrls={cardImageUrls}
       />
     ),
