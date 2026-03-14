@@ -4,6 +4,7 @@ import { Nunito_Sans, Geist } from "next/font/google";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { DeckCacheProvider } from "@/components/deck-cache-provider";
 import { SiteHeader } from "@/components/site-header";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ const nunitoSans = Nunito_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: "Origins Base",
   description: "Explore cards, build and find best decks",
   openGraph: {
